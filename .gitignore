@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# venv
+venv/
+
+# local state
+.env
+*.log
+
+# vector store artifacts
+vector_store/
+*.faiss
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
