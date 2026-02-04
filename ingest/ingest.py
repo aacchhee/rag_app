@@ -8,7 +8,7 @@ from ingest.embed import embed_texts
 from config import Config
 
 
-REPO_DIR = Path("/home/ache/notes_repo")
+REPO_DIR = Path("/home/rag/notes_repo")
 
 
 def collect_files() -> list[Path]:
