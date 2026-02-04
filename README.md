@@ -9,7 +9,6 @@ Flask + Gunicorn backend for a **notes-first** RAG (Retrieval-Augmented Generati
 
 ## Request flow (Ask button)
 
-(Mermaid diagram below — wrap it in a mermaid fence in GitHub, see instructions right after.)
 
 ```mermaid
 flowchart TD
