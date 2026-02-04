@@ -12,7 +12,6 @@ Flask + Gunicorn backend for a **notes-first** RAG (Retrieval-Augmented Generati
 
 ```mermaid
 flowchart TD
-flowchart TD
   A["User in browser<br/>types question + chooses extra_mode"] --> B["Frontend JS<br/>POST /ask (JSON)"]
   B --> C["Nginx (HTTPS)<br/>proxy /ask"]
   C --> D["Gunicorn<br/>unix:/run/rag/rag.sock"]
