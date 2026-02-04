@@ -12,32 +12,33 @@ Flask + Gunicorn backend for a **notes-first** RAG (Retrieval-Augmented Generati
 
 ```mermaid
 flowchart TD
-  A["User in browser\ntypes question + chooses extra_mode"] --> B["Frontend JS\nPOST /ask (JSON)"]
-  B --> C["Nginx (HTTPS)\nproxy /ask"]
-  C --> D["Gunicorn\nunix:/run/rag/rag.sock"]
-  D --> E["Flask: /ask handler\nparse JSON + defaults"]
+flowchart TD
+  A["User in browser<br/>types question + chooses extra_mode"] --> B["Frontend JS<br/>POST /ask (JSON)"]
+  B --> C["Nginx (HTTPS)<br/>proxy /ask"]
+  C --> D["Gunicorn<br/>unix:/run/rag/rag.sock"]
+  D --> E["Flask: /ask handler<br/>parse JSON + defaults"]
 
-  E --> F["Embed query\nPOST /v1/embeddings"]
-  F --> G["FAISS vector search\ntop-k chunks"]
+  E --> F["Embed query<br/>POST /v1/embeddings"]
+  F --> G["FAISS vector search<br/>top-k chunks"]
   G --> H["Build source_blocks + sources[]"]
 
-  H --> I["Pass 1: Notes-first prompt\nquestion + retrieved chunks"]
-  I --> J["LLM chat completions\nPOST /v1/chat/completions"]
-  J --> K["Sanitize + extract COVERAGE\nremove think-tags etc."]
-  K --> L["coverage = model_coverage\nor retrieval_coverage"]
+  H --> I["Pass 1: Notes-first prompt<br/>question + retrieved chunks"]
+  I --> J["LLM chat completions<br/>POST /v1/chat/completions"]
+  J --> K["Sanitize + extract COVERAGE<br/>remove think-tags etc."]
+  K --> L["coverage = model_coverage<br/>or retrieval_coverage"]
 
-  L --> M{"Do pass 2?\ninclude_extra & extra_mode"}
+  L --> M{"Do pass 2?<br/>include_extra & extra_mode"}
   M -->|never| R["Skip extra"]
-  M -->|always| N["Pass 2: Extra prompt\nquestion + notes answer"]
+  M -->|always| N["Pass 2: Extra prompt<br/>question + notes answer"]
   M -->|"auto & coverage!=full"| N
 
-  N --> O["LLM chat completions\nPOST /v1/chat/completions"]
-  O --> P["Sanitize extra\nensure header"]
-  R --> Q["Build JSON response\nanswer_notes, coverage, sources"]
+  N --> O["LLM chat completions<br/>POST /v1/chat/completions"]
+  O --> P["Sanitize extra<br/>ensure header"]
+  R --> Q["Build JSON response<br/>answer_notes, coverage, sources"]
   P --> Q
 
-  Q --> S["Frontend renders\nnotes + sources + extra (optional)"]
-  S --> T["MathJax typeset (if enabled)"]
+  Q --> S["Frontend renders<br/>notes + sources + extra (optional)"]
+  S --> T["MathJax typeset<br/>(if enabled)"]
 ```
 
 ---
