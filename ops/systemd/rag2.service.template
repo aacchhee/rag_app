@@ -1,0 +1,26 @@
+[Unit]
+Description=RAG Flask Backend (NTNU)
+After=network.target
+
+[Service]
+User=rag
+Group=www-data
+UMask=0007
+WorkingDirectory=/home/rag/rag_app_qdrant
+Environment="PATH=/home/rag/rag_app_qdrant/venv/bin"
+EnvironmentFile=/etc/rag2.env
+
+ExecStartPre=/bin/rm -f /run/rag2/rag2.sock
+
+ExecStart=/home/rag/rag_app_qdrant/venv/bin/gunicorn \
+  --workers 2 \
+  --umask 007 \
+  --bind unix:/run/rag2/rag2.sock \
+  app:app
+
+Restart=always
+RuntimeDirectory=rag2
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target

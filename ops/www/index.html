@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RAG Assistant</title>
+
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #f7f7f8; color: #111; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+    .card { background: #fff; border-radius: 14px; box-shadow: 0 1px 6px rgba(0,0,0,.08); padding: 18px; }
+    h1 { font-size: 20px; margin: 0 0 10px; }
+    .muted { color: #666; font-size: 13px; }
+    label { font-weight: 600; display: block; margin: 12px 0 6px; }
+    textarea { width: 100%; min-height: 110px; resize: vertical; padding: 10px 12px; border: 1px solid #ddd; border-radius: 10px; font-size: 15px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+    button { border: 0; background: #111; color: #fff; padding: 10px 14px; border-radius: 10px; font-weight: 650; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    select { font-size: 14px; }
+    .section { margin-top: 16px; }
+    .section h2 { font-size: 16px; margin: 0 0 8px; }
+    .answer { border: 1px solid #eee; border-radius: 12px; padding: 12px 14px; background: #fcfcfc; white-space: pre-wrap; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eee; font-size: 12px; margin-left: 8px; }
+    details { margin-top: 10px; }
+    details > summary { cursor: pointer; font-weight: 650; }
+    .err { color: #b00020; white-space: pre-wrap; margin-top: 10px; }
+    .sources { margin-top: 10px; font-size: 13px; color: #333; }
+    .sources ul { margin: 8px 0 0; padding-left: 18px; }
+    code { background: #f1f1f1; padding: 1px 5px; border-radius: 6px; }
+    .topbar { display:flex; justify-content: space-between; align-items:center; gap: 10px; margin-bottom: 10px; }
+    .linkish { color: #0b57d0; text-decoration: none; }
+  </style>
+
+  <!-- MathJax (renders \( \) and \[ \]) -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(', '\\)'], ['$', '$']],
+        displayMath: [['\\[', '\\]'], ['$$', '$$']],
+        processEscapes: true
+      },
+      options: { skipHtmlTags: ['script','noscript','style','textarea','pre','code'] }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="topbar">
+        <h1>Notes-first RAG Assistant</h1>
+        <a class="linkish" href="/" title="Back to notes site">Back to notes</a>
+      </div>
+
+      <div class="muted">
+        Backend: <code>/rag/ask</code> — UI: <code>/rag/</code>.
+      </div>
+
+      <label for="q">Question</label>
+      <textarea id="q" placeholder="Ask something… (math is OK)"></textarea>
+
+      <div class="row">
+        <button id="askBtn" type="button">Ask</button>
+
+        <label class="muted" style="display:flex; align-items:center; gap:8px;">
+          Extra mode:
+          <select id="extraMode">
+            <option value="auto" selected>auto</option>
+            <option value="always">always</option>
+            <option value="never">never</option>
+          </select>
+        </label>
+
+        <span id="status" class="muted"></span>
+      </div>
+
+      <div class="section">
+        <h2>From the notes <span id="cov" class="pill" style="display:none;"></span></h2>
+        <div id="notes" class="answer"></div>
+
+        <div id="sources" class="sources"></div>
+
+        <details id="extraBox" style="display:none;">
+          <summary>Extra context (not from notes)</summary>
+          <div id="extra" class="answer" style="margin-top:10px;"></div>
+        </details>
+
+        <div id="err" class="err"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function $(id) { return document.getElementById(id); }
+
+    function setStatus(msg) { $("status").textContent = msg || ""; }
+    function setError(msg) { $("err").textContent = msg || ""; }
+
+    function escapeHtml(str) {
+      return String(str || "").replace(/[&<>"']/g, function(c) {
+        return ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" })[c];
+      });
+    }
+
+    function renderSources(list) {
+      if (!list || !list.length) {
+        $("sources").innerHTML = "<div class=\"muted\">No sources retrieved.</div>";
+        return;
+      }
+      var items = list.map(function(s) {
+        var heading = s.heading ? (" — " + escapeHtml(s.heading)) : "";
+        return "<li><strong>" + escapeHtml(s.tag || "") + "</strong> " +
+               escapeHtml(s.source || "") + heading +
+               " (chunk " + escapeHtml(String(s.chunk_id)) + ")</li>";
+      }).join("");
+      $("sources").innerHTML = "<div><strong>Sources</strong></div><ul>" + items + "</ul>";
+    }
+
+    async function typesetMath() {
+      if (window.MathJax && MathJax.typesetPromise) {
+        try { await MathJax.typesetPromise(); } catch (e) {}
+      }
+    }
+
+    async function ask() {
+      setError("");
+      $("notes").textContent = "";
+      $("extra").textContent = "";
+      $("extraBox").style.display = "none";
+      $("cov").style.display = "none";
+      $("sources").innerHTML = "";
+
+      var question = $("q").value.trim();
+      if (!question) {
+        setError("Please enter a question.");
+        return;
+      }
+
+      var payload = {
+        question: question,
+        extra_mode: $("extraMode").value
+      };
+
+      $("askBtn").disabled = true;
+      setStatus("Thinking…");
+
+      try {
+        var r = await fetch("/rag/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        var text = await r.text();
+        if (!r.ok) throw new Error("HTTP " + r.status + "\n" + text);
+
+        var j;
+        try { j = JSON.parse(text); }
+        catch (e) { throw new Error("Backend returned non-JSON:\n" + text.slice(0, 800)); }
+
+        // For now: render as plain text (safe). MathJax will render LaTeX delimiters.
+        $("notes").textContent = j.answer_notes || "";
+        renderSources(j.sources || []);
+
+        if (j.coverage) {
+          $("cov").textContent = "coverage: " + j.coverage;
+          $("cov").style.display = "inline-block";
+        }
+
+        if (j.answer_extra) {
+          $("extra").textContent = j.answer_extra;
+          $("extraBox").style.display = "block";
+          if (j.coverage && j.coverage !== "full") $("extraBox").open = true;
+        }
+
+        await typesetMath();
+        setStatus("Done.");
+      } catch (e) {
+        setError(String(e));
+        setStatus("Error");
+      } finally {
+        $("askBtn").disabled = false;
+      }
+    }
+
+    function boot() {
+      setStatus("UI ready");
+      $("askBtn").addEventListener("click", ask);
+      $("q").addEventListener("keydown", function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") ask();
+      });
+
+      window.addEventListener("error", function(e) {
+        setError("JS error: " + (e.message || "unknown"));
+        setStatus("Error");
+      });
+      window.addEventListener("unhandledrejection", function(e) {
+        setError("Promise error: " + (e.reason || "unknown"));
+        setStatus("Error");
+      });
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot);
+    } else {
+      boot();
+    }
+  </script>
+</body>
+</html>
+

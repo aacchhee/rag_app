@@ -1,0 +1,69 @@
+server {
+    listen 80;
+    server_name __PRIMARY_FQDN__ __ALT_FQDN__;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name __PRIMARY_FQDN__ __ALT_FQDN__;
+    ssl_certificate     /etc/ssl/certs/__VM_FQDN__.pem;
+    ssl_certificate_key /etc/ssl/private/__VM_FQDN__.key;
+
+    client_max_body_size 10m;
+
+# --- Hello world at / (no redirect) ---
+location = / {
+    root /var/www;
+    try_files /index.html =404;
+}
+
+location = /rag/health {
+    proxy_pass http://unix:/run/rag/rag.sock:/health;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
+location = /rag/ask {
+    proxy_pass http://unix:/run/rag/rag.sock:/ask;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
+
+# --- RAG UI (static) ---
+location ^~ /rag/ {
+
+    alias /var/www/rag-ui/;
+    index index.html;
+    try_files $uri $uri/ /rag/index.html;
+
+
+
+}
+
+location = /rag2/health {
+    proxy_pass http://unix:/run/rag2/rag2.sock:/health;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
+location = /rag2/ask {
+    proxy_pass http://unix:/run/rag2/rag2.sock:/ask;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
+
+# --- RAG2 UI (static) ---
+location ^~ /rag2/ {
+    alias /var/www/rag2-ui/;
+    index index.html;
+    try_files $uri $uri/ /rag2/index.html;
+}
+
+}
