@@ -7,6 +7,11 @@ from rag.retriever import Retriever
 from rag.llm import chat_completion
 from rag import settings as RAG
 
+import logging
+logging.basicConfig(level=logging.INFO)
+
+
+
 app = Flask(__name__)
 
 # Load retriever once at startup

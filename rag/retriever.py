@@ -9,7 +9,6 @@ import numpy as np
 
 logger = logging.getLogger("rag.retriever")
 
-
 def _preview(s: str, n: int = 180) -> str:
     s = (s or "").replace("\n", "\\n")
     return s[:n] + ("…" if len(s) > n else "")
