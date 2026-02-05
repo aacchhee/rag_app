@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 import faiss
 import numpy as np
 
-logger = logging.getLogger("rag.retriever")
+logger = logging.getLogger("gunicorn.error")
 
 def _preview(s: str, n: int = 180) -> str:
     s = (s or "").replace("\n", "\\n")
