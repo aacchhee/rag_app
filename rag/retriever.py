@@ -9,7 +9,7 @@ import numpy as np
 
 logger = logging.getLogger("gunicorn.error")
 
-def _preview(s: str, n: int = 180) -> str:
+def _preview(s: str, n: int = 1800) -> str:
     s = (s or "").replace("\n", "\\n")
     return s[:n] + ("…" if len(s) > n else "")
 
