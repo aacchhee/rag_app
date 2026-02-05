@@ -198,9 +198,18 @@ def ask():
     # 1) Retrieve from notes
     q_emb = embed_texts([q])[0]
     top_k = int(data.get("top_k", RAG.TOP_K_DEFAULT))
-    hits = retriever.search(q_emb, top_k=top_k)
+    hits = retriever.search(q_emb, top_k=top_k, log_hits=True)
     sources, source_blocks = render_sources(hits)
     retrieval_coverage = detect_coverage(hits)
+    
+    app.logger.info(
+        "RETR q=%r top_k=%d hits=%d cov=%s best_chars=%d",
+        q[:120],
+        top_k,
+        len(hits),
+        retrieval_coverage,
+        len((hits[0].text or "")) if hits else 0,
+    )
 
     # 2) Pass 1: notes-only answer (must cite)
     system_1 = (
