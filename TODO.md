@@ -5,3 +5,8 @@
 - streaming mode for the model (show tokens as they come)
 - make chains with langchain. Get some info (defs) ask the model to make examples
 - convert from plain text to markdown in outputs the standard for output
+
+- import fra flere formater
+- implement "fully worked example" - give me more similar problems - quantify difficulty somehow (?)
+- assessment of answers on those "similar problems"
+- decide on whether we need chat in frontend
