@@ -9,6 +9,7 @@ import numpy as np
 
 logger = logging.getLogger("gunicorn.error")
 
+
 def _preview(s: str, n: int = 1800) -> str:
     s = (s or "").replace("\n", "\\n")
     return s[:n] + ("…" if len(s) > n else "")
@@ -45,20 +46,26 @@ class Retriever:
         elif isinstance(meta, list):
             self.chunks = meta
         else:
-            raise RuntimeError("meta.json format not recognized (expected list or {chunks:[...]})")
+            raise RuntimeError(
+                "meta.json format not recognized (expected list or {chunks:[...]})"
+            )
 
-    def search(self, query_vec: np.ndarray, top_k: int, *, log_hits: bool = True) -> List[Hit]:
+    def search(
+        self, query_vec: np.ndarray, top_k: int, *, log_hits: bool = True
+    ) -> List[Hit]:
         q = query_vec.astype("float32")
         if q.ndim == 1:
             q = q.reshape(1, -1)
 
-        D, I = self.index.search(q, top_k)  # D: distances/scores, I: indices
+        D, I = self.index.search(q, top_k)
         hits: List[Hit] = []
 
         if log_hits:
             logger.info("[retrieve] top_k=%d q_shape=%s", top_k, tuple(q.shape))
 
-        for rank, (score, idx) in enumerate(zip(D[0].tolist(), I[0].tolist()), start=1):
+        for rank, (score, idx) in enumerate(
+            zip(D[0].tolist(), I[0].tolist()), start=1
+        ):
             if idx < 0:
                 continue
             c = self.chunks[idx]

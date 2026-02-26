@@ -1,6 +1,5 @@
 import os
 
-
 class Config:
     # --- Chat ---
     CHAT_URL = os.getenv("CHAT_URL")
@@ -26,6 +25,35 @@ class Config:
     # --- Safety ---
     MAX_QUESTION_LENGTH = int(os.getenv("MAX_QUESTION_LENGTH", "1000"))
 
+    # --- LangChain-compatible base URL ---
+    # OpenAI-compatible endpoints: strip /v1/chat/completions or /v1/embeddings
+    # to get the base URL that LangChain expects
+    @classmethod
+    def chat_base_url(cls) -> str:
+        """Return base URL for ChatOpenAI (strip trailing path after /v1)."""
+        url = cls.CHAT_URL or ""
+        # If URL ends with /v1/chat/completions, strip that
+        for suffix in ["/chat/completions", "/v1/chat/completions"]:
+            if url.endswith(suffix):
+                url = url[: -len(suffix)]
+                break
+        # Ensure it ends with /v1
+        if not url.endswith("/v1"):
+            url = url.rstrip("/") + "/v1"
+        return url
+
+    @classmethod
+    def embeddings_base_url(cls) -> str:
+        """Return base URL for OpenAIEmbeddings (strip trailing path after /v1)."""
+        url = cls.EMBEDDINGS_URL or ""
+        for suffix in ["/embeddings", "/v1/embeddings"]:
+            if url.endswith(suffix):
+                url = url[: -len(suffix)]
+                break
+        if not url.endswith("/v1"):
+            url = url.rstrip("/") + "/v1"
+        return url
+
     @classmethod
     def validate(cls) -> None:
         missing = []
@@ -40,6 +68,7 @@ class Config:
         if not cls.CHAT_MODEL:
             missing.append("CHAT_MODEL")
 
-
         if missing:
-            raise RuntimeError("Missing required environment variables: " + ", ".join(missing))
+            raise RuntimeError(
+                "Missing required environment variables: " + ", ".join(missing)
+            )

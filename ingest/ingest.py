@@ -40,7 +40,9 @@ def main():
 
     files = collect_files()
     if not files:
-        raise RuntimeError(f"No files found under {REPO_DIR}. Check repo layout / paths.")
+        raise RuntimeError(
+            f"No files found under {REPO_DIR}. Check repo layout / paths."
+        )
 
     all_chunks = []
     for f in files:
@@ -70,12 +72,17 @@ def main():
         json.dump(all_chunks, f, ensure_ascii=False, indent=2)
 
     with open(out_dir / "info.json", "w", encoding="utf-8") as f:
-        json.dump({
-            "repo_dir": str(REPO_DIR),
-            "files_indexed": [str(p.relative_to(REPO_DIR)) for p in files],
-            "chunks": len(all_chunks),
-            "embedding_dim": dim,
-        }, f, ensure_ascii=False, indent=2)
+        json.dump(
+            {
+                "repo_dir": str(REPO_DIR),
+                "files_indexed": [str(p.relative_to(REPO_DIR)) for p in files],
+                "chunks": len(all_chunks),
+                "embedding_dim": dim,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
 
     print(f"[ingest] files: {len(files)} | chunks: {len(all_chunks)} | dim: {dim}")
     print(f"[ingest] wrote: {out_dir / 'index.faiss'}")
