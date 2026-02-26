@@ -3,10 +3,9 @@ Flask==3.1.2
 gunicorn==25.0.1
 
 # LangChain
-langchain==0.3.25
-langchain-core==0.3.25
-langchain-openai==0.3.18
-langchain-community==0.3.25
+langchain>=0.3.25
+langchain-openai>=0.3.18
+langchain-community>=0.3.25
 faiss-cpu==1.13.2
 
 # Flask/Gunicorn
