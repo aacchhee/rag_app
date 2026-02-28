@@ -8,8 +8,7 @@ from dataclasses import dataclass
 from typing import List
 
 import numpy as np
-from qdrant_client import QdrantClient
-from qdrant_client.models import SearchParams
+from qdrant_client import QdrantClient, models
 
 from config import Config
 
@@ -70,12 +69,12 @@ class Retriever:
         if log_hits:
             logger.info("[retrieve] top_k=%d vec_dim=%d", top_k, len(q))
 
-        results = self.client.search(
+        results = self.client.query_points(
             collection_name=self.collection,
-            query_vector=q.tolist(),
+            query=q.tolist(),
             limit=top_k,
             with_payload=True,
-        )
+        ).points
 
         hits: List[Hit] = []
         for rank, point in enumerate(results, start=1):

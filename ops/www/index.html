@@ -54,7 +54,7 @@
       </div>
 
       <div class="muted">
-        Backend: <code>/rag/ask</code> — UI: <code>/rag/</code>.
+        Backend: <code>/rag2/ask</code> — UI: <code>/rag2/</code>.
       </div>
 
       <label for="q">Question</label>
@@ -146,7 +146,7 @@
       setStatus("Thinking…");
 
       try {
-        var r = await fetch("/rag/ask", {
+        var r = await fetch("/rag2/ask", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
