@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import List
 
 import numpy as np
-from qdrant_client import QdrantClient, models
+from qdrant_client import QdrantClient
 
 from config import Config
 
@@ -79,13 +79,14 @@ class Retriever:
         hits: List[Hit] = []
         for rank, point in enumerate(results, start=1):
             payload = point.payload or {}
+            meta = payload.get("metadata", {})
 
             hit = Hit(
-                idx=payload.get("chunk_index", rank),
+                idx=meta.get("chunk_index", rank),
                 score=float(point.score),
-                text=payload.get("page_content", payload.get("text", "")),
-                source=payload.get("source", ""),
-                heading=payload.get("heading"),
+                text=payload.get("page_content", ""),
+                source=meta.get("source", ""),
+                heading=meta.get("heading"),
             )
             hits.append(hit)
 
