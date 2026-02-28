@@ -12,14 +12,13 @@
     h1 { font-size: 20px; margin: 0 0 10px; }
     .muted { color: #666; font-size: 13px; }
     label { font-weight: 600; display: block; margin: 12px 0 6px; }
-    textarea { width: 100%; min-height: 110px; resize: vertical; padding: 10px 12px; border: 1px solid #ddd; border-radius: 10px; font-size: 15px; }
+    textarea { width: 100%; min-height: 110px; resize: vertical; padding: 10px 12px; border: 1px solid #ddd; border-radius: 10px; font-size: 15px; box-sizing: border-box; }
     .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
     button { border: 0; background: #111; color: #fff; padding: 10px 14px; border-radius: 10px; font-weight: 650; cursor: pointer; }
     button:disabled { opacity: .6; cursor: not-allowed; }
     select { font-size: 14px; }
     .section { margin-top: 16px; }
     .section h2 { font-size: 16px; margin: 0 0 8px; }
-    .answer { border: 1px solid #eee; border-radius: 12px; padding: 12px 14px; background: #fcfcfc; white-space: pre-wrap; }
     .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eee; font-size: 12px; margin-left: 8px; }
     details { margin-top: 10px; }
     details > summary { cursor: pointer; font-weight: 650; }
@@ -29,7 +28,22 @@
     code { background: #f1f1f1; padding: 1px 5px; border-radius: 6px; }
     .topbar { display:flex; justify-content: space-between; align-items:center; gap: 10px; margin-bottom: 10px; }
     .linkish { color: #0b57d0; text-decoration: none; }
+
+    /* Markdown answer styling */
+    .answer { border: 1px solid #eee; border-radius: 12px; padding: 12px 14px; background: #fcfcfc; }
+    .answer p { margin: 0 0 10px; line-height: 1.6; }
+    .answer p:last-child { margin-bottom: 0; }
+    .answer ul, .answer ol { margin: 4px 0 10px; padding-left: 22px; }
+    .answer li { margin-bottom: 4px; line-height: 1.5; }
+    .answer h3, .answer h4 { margin: 14px 0 6px; font-size: 15px; }
+    .answer pre { background: #f1f1f1; padding: 10px; border-radius: 8px; overflow-x: auto; }
+    .answer code { font-size: 13px; }
+    .answer blockquote { border-left: 3px solid #ddd; margin: 8px 0; padding: 4px 12px; color: #555; }
+    .answer strong { font-weight: 650; }
   </style>
+
+  <!-- Marked.js (lightweight markdown → HTML) -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
   <!-- MathJax (renders \( \) and \[ \]) -->
   <script>
@@ -103,6 +117,56 @@
       });
     }
 
+    /**
+     * Render markdown to HTML safely.
+     * Protects LaTeX delimiters from being mangled by the markdown parser.
+     */
+    function renderMarkdown(text) {
+      if (!text) return "";
+
+      // 1. Protect LaTeX blocks by replacing them with placeholders
+      var placeholders = [];
+      var i = 0;
+
+      // Protect display math ($$...$$) first
+      text = text.replace(/\$\$[\s\S]*?\$\$/g, function(match) {
+        var id = "%%MATHBLOCK" + (i++) + "%%";
+        placeholders.push({ id: id, content: match });
+        return id;
+      });
+
+      // Protect inline math ($...$)
+      text = text.replace(/\$[^$\n]+?\$/g, function(match) {
+        var id = "%%MATHBLOCK" + (i++) + "%%";
+        placeholders.push({ id: id, content: match });
+        return id;
+      });
+
+      // Protect \[...\] display math
+      text = text.replace(/\\\[[\s\S]*?\\\]/g, function(match) {
+        var id = "%%MATHBLOCK" + (i++) + "%%";
+        placeholders.push({ id: id, content: match });
+        return id;
+      });
+
+      // Protect \(...\) inline math
+      text = text.replace(/\\\([\s\S]*?\\\)/g, function(match) {
+        var id = "%%MATHBLOCK" + (i++) + "%%";
+        placeholders.push({ id: id, content: match });
+        return id;
+      });
+
+      // 2. Parse markdown to HTML
+      var html = marked.parse(text, { breaks: true });
+
+      // 3. Restore LaTeX placeholders
+      placeholders.forEach(function(p) {
+        html = html.replace(p.id, p.content);
+      });
+
+      return html;
+    }
+
     function renderSources(list) {
       if (!list || !list.length) {
         $("sources").innerHTML = "<div class=\"muted\">No sources retrieved.</div>";
@@ -125,8 +189,8 @@
 
     async function ask() {
       setError("");
-      $("notes").textContent = "";
-      $("extra").textContent = "";
+      $("notes").innerHTML = "";
+      $("extra").innerHTML = "";
       $("extraBox").style.display = "none";
       $("cov").style.display = "none";
       $("sources").innerHTML = "";
@@ -159,8 +223,8 @@
         try { j = JSON.parse(text); }
         catch (e) { throw new Error("Backend returned non-JSON:\n" + text.slice(0, 800)); }
 
-        // For now: render as plain text (safe). MathJax will render LaTeX delimiters.
-        $("notes").textContent = j.answer_notes || "";
+        // Render markdown + protect LaTeX
+        $("notes").innerHTML = renderMarkdown(j.answer_notes);
         renderSources(j.sources || []);
 
         if (j.coverage) {
@@ -169,7 +233,7 @@
         }
 
         if (j.answer_extra) {
-          $("extra").textContent = j.answer_extra;
+          $("extra").innerHTML = renderMarkdown(j.answer_extra);
           $("extraBox").style.display = "block";
           if (j.coverage && j.coverage !== "full") $("extraBox").open = true;
         }
