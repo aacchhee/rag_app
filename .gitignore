@@ -24,3 +24,6 @@ vector_store/
 .DS_Store
 .vscode/
 .idea/
+
+# Mocking server
+mock_server.py

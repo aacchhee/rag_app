@@ -1,11 +1,17 @@
-import json
+"""
+Qdrant retriever — replaces FAISS file-based retrieval.
+Keeps the same Hit dataclass and search() API.
+"""
+
 import logging
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Dict, List
+from typing import List
 
-import faiss
 import numpy as np
+from qdrant_client import QdrantClient
+from qdrant_client.models import SearchParams
+
+from config import Config
 
 logger = logging.getLogger("gunicorn.error")
 
@@ -26,63 +32,69 @@ class Hit:
 
 class Retriever:
     """
-    Loads:
-      - index.faiss
-      - meta.json (expects either a list of chunks OR {"chunks":[...]} )
-
-    Each chunk dict should contain:
-      - text
-      - source (or path)
-      - heading (optional)
+    Searches Qdrant for similar vectors.
+    Interface:
+        retriever.search(query_vec, top_k) -> List[Hit]
     """
 
-    def __init__(self, vector_dir: str):
-        vdir = Path(vector_dir)
-        self.index = faiss.read_index(str(vdir / "index.faiss"))
-        meta = json.loads((vdir / "meta.json").read_text(encoding="utf-8"))
+    def __init__(self):
+        self.client = QdrantClient(
+            url=Config.QDRANT_URL,
+            api_key=Config.QDRANT_API_KEY,
+        )
+        self.collection = Config.QDRANT_COLLECTION
 
-        if isinstance(meta, dict) and "chunks" in meta:
-            self.chunks: List[Dict[str, Any]] = meta["chunks"]
-        elif isinstance(meta, list):
-            self.chunks = meta
-        else:
+        # Verify collection exists
+        collections = [c.name for c in self.client.get_collections().collections]
+        if self.collection not in collections:
             raise RuntimeError(
-                "meta.json format not recognized (expected list or {chunks:[...]})"
+                f"Qdrant collection '{self.collection}' not found. "
+                f"Available: {collections}. Run ingest first."
             )
+
+        # Get point count for logging
+        info = self.client.get_collection(self.collection)
+        logger.info(
+            "[retriever] connected to Qdrant collection '%s' (%d points)",
+            self.collection,
+            info.points_count,
+        )
 
     def search(
         self, query_vec: np.ndarray, top_k: int, *, log_hits: bool = True
     ) -> List[Hit]:
         q = query_vec.astype("float32")
-        if q.ndim == 1:
-            q = q.reshape(1, -1)
-
-        D, I = self.index.search(q, top_k)
-        hits: List[Hit] = []
+        if q.ndim != 1:
+            q = q.flatten()
 
         if log_hits:
-            logger.info("[retrieve] top_k=%d q_shape=%s", top_k, tuple(q.shape))
+            logger.info("[retrieve] top_k=%d vec_dim=%d", top_k, len(q))
 
-        for rank, (score, idx) in enumerate(
-            zip(D[0].tolist(), I[0].tolist()), start=1
-        ):
-            if idx < 0:
-                continue
-            c = self.chunks[idx]
+        results = self.client.search(
+            collection_name=self.collection,
+            query_vector=q.tolist(),
+            limit=top_k,
+            with_payload=True,
+        )
+
+        hits: List[Hit] = []
+        for rank, point in enumerate(results, start=1):
+            payload = point.payload or {}
+
             hit = Hit(
-                idx=int(idx),
-                score=float(score),
-                text=c.get("text", ""),
-                source=c.get("source", c.get("path", "")),
-                heading=c.get("heading"),
+                idx=payload.get("chunk_index", rank),
+                score=float(point.score),
+                text=payload.get("page_content", payload.get("text", "")),
+                source=payload.get("source", ""),
+                heading=payload.get("heading"),
             )
             hits.append(hit)
 
             if log_hits:
                 logger.info(
-                    "[retrieve] #%d idx=%d score=%.6f src=%s heading=%s chars=%d preview=%s",
+                    "[retrieve] #%d id=%s score=%.6f src=%s heading=%s chars=%d preview=%s",
                     rank,
-                    hit.idx,
+                    point.id,
                     hit.score,
                     hit.source,
                     (hit.heading or ""),

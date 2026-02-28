@@ -1,5 +1,6 @@
 import os
 
+
 class Config:
     # --- Chat ---
     CHAT_URL = os.getenv("CHAT_URL")
@@ -17,6 +18,11 @@ class Config:
     # --- Embeddings ---
     EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL")
     EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL")
+
+    # --- Qdrant ---
+    QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
+    QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "course_notes")
+    QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")  # None = no auth
 
     # --- Retrieval ---
     VECTOR_DB_PATH = os.getenv("VECTOR_DB_PATH", "./vector_store")
@@ -67,6 +73,8 @@ class Config:
             missing.append("CHAT_URL")
         if not cls.CHAT_MODEL:
             missing.append("CHAT_MODEL")
+        if not cls.QDRANT_URL:
+            missing.append("QDRANT_URL")
 
         if missing:
             raise RuntimeError(

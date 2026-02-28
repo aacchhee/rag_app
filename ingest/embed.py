@@ -1,3 +1,7 @@
+"""
+LangChain-based embedding wrapper.
+"""
+
 import numpy as np
 from langchain_openai import OpenAIEmbeddings
 from config import Config
@@ -19,17 +23,17 @@ def _get_embeddings() -> OpenAIEmbeddings:
     return _embeddings_model
 
 
+def get_embeddings_model() -> OpenAIEmbeddings:
+    """
+    Return the shared OpenAIEmbeddings instance.
+    Used by ingest to pass to Qdrant.
+    """
+    return _get_embeddings()
+
+
 def embed_texts(texts: list[str], batch_size: int = 64) -> np.ndarray:
-    """
-    Embed a list of strings. Returns np.ndarray of shape (len(texts), dim).
-    Batch size is handled internally by LangChain, but we keep the param
-    for API compatibility.
-    """
     model = _get_embeddings()
-
-    # LangChain's embed_documents handles batching internally
     vectors = model.embed_documents(texts)
-
     arr = np.array(vectors, dtype="float32")
     if arr.ndim != 2:
         raise RuntimeError(f"Embeddings array has unexpected shape: {arr.shape}")

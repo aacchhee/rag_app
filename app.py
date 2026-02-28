@@ -15,8 +15,8 @@ logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
-# Load retriever once at startup
-retriever = Retriever(Config.VECTOR_DB_PATH)
+# Load retriever once at startup (connects to Qdrant)
+retriever = Retriever()
 
 
 def detect_coverage(hits) -> str:
