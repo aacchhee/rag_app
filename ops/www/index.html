@@ -26,6 +26,65 @@
     .sources { margin-top: 10px; font-size: 13px; color: #333; }
     .sources ul { margin: 8px 0 0; padding-left: 18px; }
     code { background: #f1f1f1; padding: 1px 5px; border-radius: 6px; }
+
+    /* Navigation topbar */
+    .nav-topbar {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: #111;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .nav-topbar a {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 11px 20px;
+      color: #aaa;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      transition: background .15s, color .15s;
+      position: relative;
+    }
+    .nav-topbar a:hover {
+      background: #222;
+      color: #fff;
+    }
+    .nav-topbar a.active {
+      background: #272727;
+      color: #fff;
+    }
+    .nav-topbar a.active::after {
+      content: "";
+      position: absolute;
+      bottom: 0;
+      left: 16px;
+      right: 16px;
+      height: 2px;
+      background: #4a9eff;
+      border-radius: 2px;
+    }
+    .nav-topbar .nav-icon {
+      font-size: 15px;
+      line-height: 1;
+    }
+    .nav-topbar .spacer {
+      flex: 1;
+    }
+    .nav-topbar .back-link {
+      color: #6ba3e8;
+      font-weight: 500;
+      font-size: 13px;
+      padding: 11px 18px;
+    }
+    .nav-topbar .back-link:hover {
+      color: #9dc4f5;
+      background: #1a1a1a;
+    }
+
     .topbar { display:flex; justify-content: space-between; align-items:center; gap: 10px; margin-bottom: 10px; }
     .linkish { color: #0b57d0; text-decoration: none; }
 
@@ -61,10 +120,22 @@
 
 <body>
   <div class="wrap">
+
+    <!-- Navigation topbar -->
+    <nav class="nav-topbar">
+      <a href="/rag2/" class="active" title="Ask a question">
+        <span class="nav-icon">💬</span> Question
+      </a>
+      <a href="/rag2/quiz.html" title="Take a quiz">
+        <span class="nav-icon">📝</span> Quiz
+      </a>
+      <span class="spacer"></span>
+      <a class="back-link" href="/" title="Back to notes site"><- Notes</a>
+    </nav>
+
     <div class="card">
       <div class="topbar">
         <h1>Notes-first RAG Assistant with qdrant</h1>
-        <a class="linkish" href="/" title="Back to notes site">Back to notes</a>
       </div>
 
       <div class="muted">
