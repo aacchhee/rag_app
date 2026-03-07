@@ -6,26 +6,129 @@
   <title>RAG Assistant</title>
 
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #f7f7f8; color: #111; }
-    .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
-    .card { background: #fff; border-radius: 14px; box-shadow: 0 1px 6px rgba(0,0,0,.08); padding: 18px; }
-    h1 { font-size: 20px; margin: 0 0 10px; }
-    .muted { color: #666; font-size: 13px; }
-    label { font-weight: 600; display: block; margin: 12px 0 6px; }
-    textarea { width: 100%; min-height: 110px; resize: vertical; padding: 10px 12px; border: 1px solid #ddd; border-radius: 10px; font-size: 15px; box-sizing: border-box; }
-    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
-    button { border: 0; background: #111; color: #fff; padding: 10px 14px; border-radius: 10px; font-weight: 650; cursor: pointer; }
-    button:disabled { opacity: .6; cursor: not-allowed; }
-    select { font-size: 14px; }
-    .section { margin-top: 16px; }
-    .section h2 { font-size: 16px; margin: 0 0 8px; }
-    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eee; font-size: 12px; margin-left: 8px; }
-    details { margin-top: 10px; }
-    details > summary { cursor: pointer; font-weight: 650; }
-    .err { color: #b00020; white-space: pre-wrap; margin-top: 10px; }
-    .sources { margin-top: 10px; font-size: 13px; color: #333; }
-    .sources ul { margin: 8px 0 0; padding-left: 18px; }
-    code { background: #f1f1f1; padding: 1px 5px; border-radius: 6px; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 0;
+      background: #f7f7f8;
+      color: #111;
+    }
+
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 1px 6px rgba(0, 0, 0, .08);
+      padding: 18px;
+    }
+
+    h1 {
+      font-size: 20px;
+      margin: 0 0 10px;
+    }
+
+    .muted {
+      color: #666;
+      font-size: 13px;
+    }
+
+    label {
+      font-weight: 600;
+      display: block;
+      margin: 12px 0 6px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 110px;
+      resize: vertical;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      font-size: 15px;
+      box-sizing: border-box;
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 12px;
+    }
+
+    button {
+      border: 0;
+      background: #111;
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+
+    select {
+      font-size: 14px;
+    }
+
+    .section {
+      margin-top: 16px;
+    }
+
+    .section h2 {
+      font-size: 16px;
+      margin: 0 0 8px;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #eee;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+
+    details {
+      margin-top: 10px;
+    }
+
+    details>summary {
+      cursor: pointer;
+      font-weight: 650;
+    }
+
+    .err {
+      color: #b00020;
+      white-space: pre-wrap;
+      margin-top: 10px;
+    }
+
+    .sources {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #333;
+    }
+
+    .sources ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+    }
+
+    code {
+      background: #f1f1f1;
+      padding: 1px 5px;
+      border-radius: 6px;
+    }
 
     /* Navigation topbar */
     .nav-topbar {
@@ -37,6 +140,7 @@
       overflow: hidden;
       margin-bottom: 16px;
     }
+
     .nav-topbar a {
       display: flex;
       align-items: center;
@@ -49,14 +153,17 @@
       transition: background .15s, color .15s;
       position: relative;
     }
+
     .nav-topbar a:hover {
       background: #222;
       color: #fff;
     }
+
     .nav-topbar a.active {
       background: #272727;
       color: #fff;
     }
+
     .nav-topbar a.active::after {
       content: "";
       position: absolute;
@@ -67,38 +174,152 @@
       background: #4a9eff;
       border-radius: 2px;
     }
+
     .nav-topbar .nav-icon {
       font-size: 15px;
       line-height: 1;
     }
+
     .nav-topbar .spacer {
       flex: 1;
     }
+
     .nav-topbar .back-link {
       color: #6ba3e8;
       font-weight: 500;
       font-size: 13px;
       padding: 11px 18px;
     }
+
     .nav-topbar .back-link:hover {
       color: #9dc4f5;
       background: #1a1a1a;
     }
 
-    .topbar { display:flex; justify-content: space-between; align-items:center; gap: 10px; margin-bottom: 10px; }
-    .linkish { color: #0b57d0; text-decoration: none; }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .linkish {
+      color: #0b57d0;
+      text-decoration: none;
+    }
 
     /* Markdown answer styling */
-    .answer { border: 1px solid #eee; border-radius: 12px; padding: 12px 14px; background: #fcfcfc; }
-    .answer p { margin: 0 0 10px; line-height: 1.6; }
-    .answer p:last-child { margin-bottom: 0; }
-    .answer ul, .answer ol { margin: 4px 0 10px; padding-left: 22px; }
-    .answer li { margin-bottom: 4px; line-height: 1.5; }
-    .answer h3, .answer h4 { margin: 14px 0 6px; font-size: 15px; }
-    .answer pre { background: #f1f1f1; padding: 10px; border-radius: 8px; overflow-x: auto; }
-    .answer code { font-size: 13px; }
-    .answer blockquote { border-left: 3px solid #ddd; margin: 8px 0; padding: 4px 12px; color: #555; }
-    .answer strong { font-weight: 650; }
+    .answer {
+      border: 1px solid #eee;
+      border-radius: 12px;
+      padding: 12px 14px;
+      background: #fcfcfc;
+      min-height: 24px;
+    }
+
+    .answer p {
+      margin: 0 0 10px;
+      line-height: 1.6;
+    }
+
+    .answer p:last-child {
+      margin-bottom: 0;
+    }
+
+    .answer ul,
+    .answer ol {
+      margin: 4px 0 10px;
+      padding-left: 22px;
+    }
+
+    .answer li {
+      margin-bottom: 4px;
+      line-height: 1.5;
+    }
+
+    .answer h3,
+    .answer h4 {
+      margin: 14px 0 6px;
+      font-size: 15px;
+    }
+
+    .answer pre {
+      background: #f1f1f1;
+      padding: 10px;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+
+    .answer code {
+      font-size: 13px;
+    }
+
+    .answer blockquote {
+      border-left: 3px solid #ddd;
+      margin: 8px 0;
+      padding: 4px 12px;
+      color: #555;
+    }
+
+    .answer strong {
+      font-weight: 650;
+    }
+
+    /* Thinking indicator */
+    .thinking {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #888;
+      font-size: 14px;
+    }
+
+    .thinking-dots span {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #aaa;
+      animation: dot-pulse 1.4s ease-in-out infinite;
+    }
+
+    .thinking-dots span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .thinking-dots span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes dot-pulse {
+
+      0%,
+      80%,
+      100% {
+        opacity: 0.3;
+        transform: scale(0.8);
+      }
+
+      40% {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    /* Cursor blink while streaming */
+    .streaming-cursor::after {
+      content: "▊";
+      animation: blink 0.7s step-end infinite;
+      color: #999;
+      margin-left: 1px;
+    }
+
+    @keyframes blink {
+      50% {
+        opacity: 0;
+      }
+    }
   </style>
 
   <!-- Marked.js (lightweight markdown → HTML) -->
@@ -112,7 +333,7 @@
         displayMath: [['\\[', '\\]'], ['$$', '$$']],
         processEscapes: true
       },
-      options: { skipHtmlTags: ['script','noscript','style','textarea','pre','code'] }
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] }
     };
   </script>
   <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
@@ -183,8 +404,8 @@
     function setError(msg) { $("err").textContent = msg || ""; }
 
     function escapeHtml(str) {
-      return String(str || "").replace(/[&<>"']/g, function(c) {
-        return ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" })[c];
+      return String(str || "").replace(/[&<>"']/g, function (c) {
+        return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
       });
     }
 
@@ -230,12 +451,20 @@
       // 2. Parse markdown to HTML
       var html = marked.parse(text, { breaks: true });
 
-      // 3. Restore LaTeX placeholders
+      // 1. Protect LaTeX blocks by replacing them with placeholders
       placeholders.forEach(function(p) {
         html = html.replace(p.id, p.content);
       });
 
       return html;
+    }
+
+    function showThinking(targetId) {
+      $(targetId).innerHTML =
+        '<div class="thinking">' +
+        '<div class="thinking-dots"><span></span><span></span><span></span></div>' +
+        ' Thinking…' +
+        '</div>';
     }
 
     function renderSources(list) {
@@ -246,16 +475,37 @@
       var items = list.map(function(s) {
         var heading = s.heading ? (" — " + escapeHtml(s.heading)) : "";
         return "<li><strong>" + escapeHtml(s.tag || "") + "</strong> " +
-               escapeHtml(s.source || "") + heading +
-               " (chunk " + escapeHtml(String(s.chunk_id)) + ")</li>";
+          escapeHtml(s.source || "") + heading +
+          " (chunk " + escapeHtml(String(s.chunk_id)) + ")</li>";
       }).join("");
       $("sources").innerHTML = "<div><strong>Sources</strong></div><ul>" + items + "</ul>";
     }
 
     async function typesetMath() {
       if (window.MathJax && MathJax.typesetPromise) {
-        try { await MathJax.typesetPromise(); } catch (e) {}
+        try {
+          MathJax.startup.document.clear();
+          MathJax.startup.document.updateDocument();
+          await MathJax.typesetPromise();
+        } catch (e) { }
       }
+    }
+
+    // Streaming state
+    var rawNotes = "";
+    var rawExtra = "";
+    var mathRenderTimer = null;
+
+    function scheduleRender(targetId, rawText) {
+      // Render markdown immediately for text, defer MathJax
+      $(targetId).innerHTML = renderMarkdown(rawText);
+      $(targetId).classList.add("streaming-cursor");
+
+      // Debounce MathJax (expensive, don't run on every token)
+      clearTimeout(mathRenderTimer);
+      mathRenderTimer = setTimeout(function () {
+        typesetMath();
+      }, 400);
     }
 
     async function ask() {
@@ -265,6 +515,8 @@
       $("extraBox").style.display = "none";
       $("cov").style.display = "none";
       $("sources").innerHTML = "";
+      rawNotes = "";
+      rawExtra = "";
 
       var question = $("q").value.trim();
       if (!question) {
@@ -278,59 +530,138 @@
       };
 
       $("askBtn").disabled = true;
+      showThinking("notes");
       setStatus("Thinking…");
 
       try {
-        var r = await fetch("/rag2/ask", {
+        var response = await fetch("/rag2/ask-stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
 
-        var text = await r.text();
-        if (!r.ok) throw new Error("HTTP " + r.status + "\n" + text);
-
-        var j;
-        try { j = JSON.parse(text); }
-        catch (e) { throw new Error("Backend returned non-JSON:\n" + text.slice(0, 800)); }
-
-        // Render markdown + protect LaTeX
-        $("notes").innerHTML = renderMarkdown(j.answer_notes);
-        renderSources(j.sources || []);
-
-        if (j.coverage) {
-          $("cov").textContent = "coverage: " + j.coverage;
-          $("cov").style.display = "inline-block";
+        if (!response.ok) {
+          var errText = await response.text();
+          throw new Error("HTTP " + response.status + "\n" + errText);
         }
 
-        if (j.answer_extra) {
-          $("extra").innerHTML = renderMarkdown(j.answer_extra);
-          $("extraBox").style.display = "block";
-          if (j.coverage && j.coverage !== "full") $("extraBox").open = true;
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = "";
+
+        while (true) {
+          var result = await reader.read();
+          if (result.done) break;
+
+          buffer += decoder.decode(result.value, { stream: true });
+
+          // Process complete SSE messages
+          var lines = buffer.split("\n");
+          buffer = lines.pop(); // keep incomplete line in buffer
+
+          var currentEvent = null;
+          for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+
+            if (line.startsWith("event: ")) {
+              currentEvent = line.slice(7).trim();
+            } else if (line.startsWith("data: ") && currentEvent) {
+              var data;
+              try { data = JSON.parse(line.slice(6)); }
+              catch (e) { continue; }
+
+              handleSSE(currentEvent, data);
+              currentEvent = null;
+            } else if (line === "") {
+              currentEvent = null;
+            }
+          }
+        }
+
+        // Final render with full text
+        $("notes").classList.remove("streaming-cursor");
+        $("extra").classList.remove("streaming-cursor");
+        $("notes").innerHTML = renderMarkdown(rawNotes);
+        if (rawExtra) {
+          $("extra").innerHTML = renderMarkdown(rawExtra);
         }
 
         await typesetMath();
         setStatus("Done.");
+
       } catch (e) {
         setError(String(e));
         setStatus("Error");
       } finally {
         $("askBtn").disabled = false;
+        $("notes").classList.remove("streaming-cursor");
+        $("extra").classList.remove("streaming-cursor");
+      }
+    }
+
+    function handleSSE(event, data) {
+      switch (event) {
+        case "status":
+          if (data.phase === "thinking") {
+            setStatus("Searching notes…");
+            showThinking("notes");
+          } else if (data.phase === "notes") {
+            setStatus("Writing answer…");
+            $("notes").innerHTML = "";
+          } else if (data.phase === "extra") {
+            setStatus("Adding extra context…");
+            $("extraBox").style.display = "block";
+            $("extraBox").open = true;
+            showThinking("extra");
+          }
+          break;
+
+        case "sources":
+          renderSources(data);
+          break;
+
+        case "token":
+          if (data.target === "notes") {
+            rawNotes += data.content;
+            scheduleRender("notes", rawNotes);
+          } else if (data.target === "extra") {
+            if ($("extra").querySelector(".thinking")) {
+              $("extra").innerHTML = "";
+            }
+            rawExtra += data.content;
+            scheduleRender("extra", rawExtra);
+          }
+          break;
+
+        case "notes_done":
+          $("notes").classList.remove("streaming-cursor");
+          if (data.coverage) {
+            $("cov").textContent = "coverage: " + data.coverage;
+            $("cov").style.display = "inline-block";
+          }
+          break;
+
+        case "extra_done":
+          $("extra").classList.remove("streaming-cursor");
+          break;
+
+        case "done":
+          break;
       }
     }
 
     function boot() {
       setStatus("UI ready");
       $("askBtn").addEventListener("click", ask);
-      $("q").addEventListener("keydown", function(e) {
+      $("q").addEventListener("keydown", function (e) {
         if ((e.ctrlKey || e.metaKey) && e.key === "Enter") ask();
       });
 
-      window.addEventListener("error", function(e) {
+      window.addEventListener("error", function (e) {
         setError("JS error: " + (e.message || "unknown"));
         setStatus("Error");
       });
-      window.addEventListener("unhandledrejection", function(e) {
+      window.addEventListener("unhandledrejection", function (e) {
         setError("Promise error: " + (e.reason || "unknown"));
         setStatus("Error");
       });
@@ -343,4 +674,5 @@
     }
   </script>
 </body>
+
 </html>
