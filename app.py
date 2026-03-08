@@ -19,6 +19,9 @@ app = Flask(__name__)
 # Load retriever once at startup (connects to Qdrant)
 retriever = Retriever()
 
+# Max conversation turns to include in chat mode
+MAX_CHAT_TURNS = 20
+
 
 def detect_coverage(hits) -> str:
     """
@@ -78,12 +81,30 @@ def _sse(event: str, data) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _build_chat_history_block(history: list) -> str:
+    """
+    Format previous turns into a text block for the system prompt.
+    Each turn has a question and answer.
+    """
+    if not history:
+        return ""
+
+    lines = ["PREVIOUS CONVERSATION:"]
+    for i, turn in enumerate(history[-MAX_CHAT_TURNS:], start=1):
+        lines.append(f"Student Q{i}: {turn.get('question', '')}")
+        lines.append(f"Your A{i}: {turn.get('answer', '')}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 @app.get("/health")
 def health():
     return jsonify(status="ok")
 
 
 # Original non-streaming endpoint (kept for backwards compatibility)
+
 @app.post("/ask")
 def ask():
     data = request.get_json(force=True) or {}
@@ -100,7 +121,7 @@ def ask():
         return jsonify(error="extra_mode must be one of: auto, always, never"), 400
 
     extra_answer = None
-
+    
     # 1) Retrieve from notes
     q_emb = embed_query(q)
     top_k = int(data.get("top_k", RAG.TOP_K_DEFAULT))
@@ -188,7 +209,8 @@ def ask():
     })
 
 
-# New streaming endpoint
+# Streaming endpoint (supports both single and chat mode)
+
 @app.post("/ask-stream")
 def ask_stream():
     data = request.get_json(force=True) or {}
@@ -196,6 +218,8 @@ def ask_stream():
     q = (data.get("question") or "").strip()
     include_extra = bool(data.get("include_extra", RAG.INCLUDE_EXTRA_DEFAULT))
     extra_mode = (data.get("extra_mode") or RAG.EXTRA_MODE_DEFAULT).lower()
+    chat_mode = bool(data.get("chat_mode", False))
+    history = data.get("history", [])
 
     if not q:
         return jsonify(error="Missing 'question'"), 400
@@ -203,6 +227,10 @@ def ask_stream():
         return jsonify(error="Question too long"), 400
     if extra_mode not in ("auto", "always", "never"):
         return jsonify(error="extra_mode must be one of: auto, always, never"), 400
+
+    # Truncate history to max turns
+    if history and len(history) > MAX_CHAT_TURNS:
+        history = history[-MAX_CHAT_TURNS:]
 
     def generate():
         # Phase: Thinking (retrieval)
@@ -218,26 +246,48 @@ def ask_stream():
         yield _sse("sources", sources)
 
         app.logger.info(
-            "STREAM RETR q=%r top_k=%d hits=%d cov=%s",
+            "STREAM RETR q=%r top_k=%d hits=%d cov=%s chat=%s turns=%d",
             q[:120], top_k, len(hits), retrieval_coverage,
+            chat_mode, len(history),
         )
 
         # Phase: Notes answer (streaming)
         yield _sse("status", {"phase": "notes"})
 
-        system_1 = (
-            "You are a course assistant. Use ONLY the provided SOURCES from the lecture notes. "
-            "Do not use outside knowledge. If the answer is not in the sources, say you don't know. "
-            "Write a clear explanation suitable for a student.\n"
-            " Include at least one concrete example and one intuitive interpretation. Use LaTeX for formulas.\n"
-            " RULES:\n"
-            " - you MUST provide one example per answer. This is mandatory, don't skip it.\n"
-            " - do not provide just the summary or just the example, you need to provide both.\n"
-            "Be concise: 3–6 sentences max. No preamble.\n\n"
-            "Cite sources like [S1], [S2] for every factual claim.\n\n"
-            "At the end of your response, include a single line exactly in this format:\n"
-            "COVERAGE: full|partial|none"
-        )
+        # Build system prompt
+        if chat_mode and history:
+            history_block = _build_chat_history_block(history)
+            system_1 = (
+                "You are a course assistant having a conversation with a student. "
+                "Use ONLY the provided SOURCES from the lecture notes. "
+                "Do not use outside knowledge. If the answer is not in the sources, say you don't know.\n"
+                "Write a clear explanation suitable for a student. "
+                "Use LaTeX for formulas.\n\n"
+                "You have access to the previous conversation for context. "
+                "The student may refer to previous questions and answers. "
+                "Answer the NEW question, using conversation history for context.\n\n"
+                "RULES:\n"
+                "- Cite sources like [S1], [S2] for every factual claim.\n"
+                "- If the student asks a follow-up, use the conversation context.\n"
+                "- Be concise but thorough.\n\n"
+                + history_block + "\n"
+                "At the end of your response, include a single line exactly in this format:\n"
+                "COVERAGE: full|partial|none"
+            )
+        else:
+            system_1 = (
+                "You are a course assistant. Use ONLY the provided SOURCES from the lecture notes. "
+                "Do not use outside knowledge. If the answer is not in the sources, say you don't know. "
+                "Write a clear explanation suitable for a student.\n"
+                " Include at least one concrete example and one intuitive interpretation. Use LaTeX for formulas.\n"
+                " RULES:\n"
+                " - you MUST provide one example per answer. This is mandatory, don't skip it.\n"
+                " - do not provide just the summary or just the example, you need to provide both.\n"
+                "Be concise: 3–6 sentences max. No preamble.\n\n"
+                "Cite sources like [S1], [S2] for every factual claim.\n\n"
+                "At the end of your response, include a single line exactly in this format:\n"
+                "COVERAGE: full|partial|none"
+            )
 
         user_1 = (
             "SOURCES:\n" + "\n".join(source_blocks)
@@ -260,43 +310,44 @@ def ask_stream():
         yield _sse("notes_done", {"coverage": coverage})
 
         app.logger.info(
-            "STREAM notes len=%d cov=%s",
-            len(notes_answer or ""), coverage,
+            "STREAM notes len=%d cov=%s chat=%s",
+            len(notes_answer or ""), coverage, chat_mode,
         )
 
-        # Phase: Extra (optional, also streaming)
-        do_extra = False
-        if include_extra and extra_mode != "never":
-            if extra_mode == "always":
-                do_extra = True
-            else:
-                do_extra = model_coverage != "full"
+        # Phase: Extra (only in single question mode)
+        if not chat_mode:
+            do_extra = False
+            if include_extra and extra_mode != "never":
+                if extra_mode == "always":
+                    do_extra = True
+                else:
+                    do_extra = model_coverage != "full"
 
-        if do_extra:
-            yield _sse("status", {"phase": "extra"})
+            if do_extra:
+                yield _sse("status", {"phase": "extra"})
 
-            system_2 = (
-                "You are a helpful tutor. Add extra context NOT necessarily from the notes. "
-                "Do NOT contradict the notes-based answer. If you add facts not present in the notes, "
-                "label them clearly as general context.\n\n"
-                "Output format (follow exactly):\n"
-                "Extra context (not from notes):\n"
-                "- 3–6 bullet points of intuition/examples\n"
-                "- If relevant, include a short worked example\n"
-            )
-            user_2 = (
-                "Question:\n" + q
-                + "\n\nNotes-based answer (authoritative for course-specific claims):\n" + notes_answer
-                + "\n\n(For consistency only) Retrieved sources:\n" + "\n".join(source_blocks)
-            )
+                system_2 = (
+                    "You are a helpful tutor. Add extra context NOT necessarily from the notes. "
+                    "Do NOT contradict the notes-based answer. If you add facts not present in the notes, "
+                    "label them clearly as general context.\n\n"
+                    "Output format (follow exactly):\n"
+                    "Extra context (not from notes):\n"
+                    "- 3–6 bullet points of intuition/examples\n"
+                    "- If relevant, include a short worked example\n"
+                )
+                user_2 = (
+                    "Question:\n" + q
+                    + "\n\nNotes-based answer (authoritative for course-specific claims):\n" + notes_answer
+                    + "\n\n(For consistency only) Retrieved sources:\n" + "\n".join(source_blocks)
+                )
 
-            for token in chat_completion_stream(
-                [{"role": "system", "content": system_2}, {"role": "user", "content": user_2}],
-                temperature=RAG.EXTRA_TEMPERATURE, max_tokens=RAG.EXTRA_MAX_TOKENS,
-            ):
-                yield _sse("token", {"target": "extra", "content": token})
+                for token in chat_completion_stream(
+                    [{"role": "system", "content": system_2}, {"role": "user", "content": user_2}],
+                    temperature=RAG.EXTRA_TEMPERATURE, max_tokens=RAG.EXTRA_MAX_TOKENS,
+                ):
+                    yield _sse("token", {"target": "extra", "content": token})
 
-            yield _sse("extra_done", {})
+                yield _sse("extra_done", {})
 
         # Done
         yield _sse("done", {"coverage": coverage})
