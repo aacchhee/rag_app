@@ -54,6 +54,7 @@
 
       <div class="row">
         <button id="askBtn" type="button">Ask</button>
+        <button id="problemBtn" class="problem-btn" type="button">Problem</button>
 
         <label class="muted" style="display:flex; align-items:center; gap:8px;" id="extraModeLabel">
           Extra mode:
@@ -82,6 +83,24 @@
           <summary>Extra context (not from notes)</summary>
           <div id="extra" class="answer" style="margin-top:10px;"></div>
         </details>
+
+        <!-- Problem section (appears after answer) -->
+        <div id="problemSection" class="problem-section">
+          <h2>Practice Problem</h2>
+          <div id="problemContent" class="problem-box"></div>
+
+          <div id="answerInputArea" class="answer-input-area">
+            <label for="studentAnswer">Your answer:</label>
+            <textarea id="studentAnswer" class="answer-input"
+              placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
+            <div class="row">
+              <button id="submitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
+              <button id="newProblemBtn" class="new-problem-btn" type="button">New problem</button>
+            </div>
+          </div>
+
+          <div id="assessmentBox" class="assessment-box"></div>
+        </div>
       </div>
 
       <!-- Chat conversation view -->
@@ -150,7 +169,7 @@
       // 2. Parse markdown to HTML
       var html = marked.parse(text, { breaks: true });
 
-      // 1. Protect LaTeX blocks by replacing them with placeholders
+      // 3. Restore LaTeX placeholders
       placeholders.forEach(function (p) {
         html = html.replace(p.id, p.content);
       });
@@ -196,6 +215,9 @@
     var rawNotes = "";
     var rawExtra = "";
     var mathRenderTimer = null;
+    var lastQuestion = "";       // last question asked (for problem generation)
+    var lastNotesAnswer = "";    // last notes answer (for problem context)
+    var currentProblemRaw = "";  // raw problem text from LLM
 
     var MAX_TURNS = 20;
 
@@ -306,11 +328,16 @@
         $("singleView").style.display = "none";
         $("chatView").classList.add("visible");
         $("extraModeLabel").style.display = "none";
+        $("problemBtn").style.display = "none";
         renderChatConversation();
       } else {
         $("singleView").style.display = "block";
         $("chatView").classList.remove("visible");
         $("extraModeLabel").style.display = "flex";
+        // Show problem button if we have a previous answer
+        if (lastNotesAnswer) {
+          $("problemBtn").style.display = "inline-block";
+        }
       }
     }
 
@@ -325,10 +352,194 @@
       mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
     }
 
+    // Problem generation
+    async function generateProblem() {
+      setError("");
+      currentProblemRaw = "";
+
+      // Reset problem UI
+      $("problemSection").classList.add("visible");
+      $("answerInputArea").classList.remove("visible");
+      $("assessmentBox").classList.remove("visible");
+      $("assessmentBox").innerHTML = "";
+      $("studentAnswer").value = "";
+      showThinking("problemContent");
+
+      $("problemBtn").disabled = true;
+      setStatus("Generating problem…");
+
+      try {
+        var response = await fetch("/rag2/problem", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question: lastQuestion,
+            notes_answer: lastNotesAnswer
+          })
+        });
+
+        if (!response.ok) {
+          var errText = await response.text();
+          throw new Error("HTTP " + response.status + "\n" + errText);
+        }
+
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = "";
+
+        while (true) {
+          var result = await reader.read();
+          if (result.done) break;
+
+          buffer += decoder.decode(result.value, { stream: true });
+
+          var lines = buffer.split("\n");
+          buffer = lines.pop();
+
+          var currentEvent = null;
+          for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+
+            if (line.startsWith("event: ")) {
+              currentEvent = line.slice(7).trim();
+            } else if (line.startsWith("data: ") && currentEvent) {
+              var data;
+              try { data = JSON.parse(line.slice(6)); }
+              catch (e) { continue; }
+
+              if (currentEvent === "token") {
+                currentProblemRaw += data.content;
+                $("problemContent").innerHTML = renderMarkdown(currentProblemRaw);
+                $("problemContent").classList.add("streaming-cursor");
+                clearTimeout(mathRenderTimer);
+                mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
+              } else if (currentEvent === "status") {
+                if (data.phase === "generating") {
+                  $("problemContent").innerHTML = "";
+                }
+              }
+
+              currentEvent = null;
+            } else if (line === "") {
+              currentEvent = null;
+            }
+          }
+        }
+
+        // Final render
+        $("problemContent").classList.remove("streaming-cursor");
+        $("problemContent").innerHTML = renderMarkdown(currentProblemRaw);
+
+        // Show answer input
+        $("answerInputArea").classList.add("visible");
+
+        await typesetMath();
+        setStatus("Problem ready — try solving it!");
+
+      } catch (e) {
+        setError(String(e));
+        setStatus("Error");
+      } finally {
+        $("problemBtn").disabled = false;
+      }
+    }
+
+    // Answer assessment
+    async function submitAnswer() {
+      setError("");
+
+      var studentAnswer = $("studentAnswer").value.trim();
+      if (!studentAnswer) {
+        setError("Please enter your answer.");
+        return;
+      }
+
+      $("assessmentBox").classList.add("visible");
+      showThinking("assessmentBox");
+
+      $("submitAnswerBtn").disabled = true;
+      setStatus("Checking your answer…");
+
+      var assessRaw = "";
+
+      try {
+        var response = await fetch("/rag2/assess", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            problem: currentProblemRaw,
+            student_answer: studentAnswer
+          })
+        });
+
+        if (!response.ok) {
+          var errText = await response.text();
+          throw new Error("HTTP " + response.status + "\n" + errText);
+        }
+
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = "";
+
+        while (true) {
+          var result = await reader.read();
+          if (result.done) break;
+
+          buffer += decoder.decode(result.value, { stream: true });
+
+          var lines = buffer.split("\n");
+          buffer = lines.pop();
+
+          var currentEvent = null;
+          for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+
+            if (line.startsWith("event: ")) {
+              currentEvent = line.slice(7).trim();
+            } else if (line.startsWith("data: ") && currentEvent) {
+              var data;
+              try { data = JSON.parse(line.slice(6)); }
+              catch (e) { continue; }
+
+              if (currentEvent === "token") {
+                assessRaw += data.content;
+                $("assessmentBox").innerHTML = renderMarkdown(assessRaw);
+                $("assessmentBox").classList.add("streaming-cursor");
+                clearTimeout(mathRenderTimer);
+                mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
+              }
+
+              currentEvent = null;
+            } else if (line === "") {
+              currentEvent = null;
+            }
+          }
+        }
+
+        // Final render
+        $("assessmentBox").classList.remove("streaming-cursor");
+        $("assessmentBox").innerHTML = renderMarkdown(assessRaw);
+
+        await typesetMath();
+        setStatus("Done.");
+
+      } catch (e) {
+        setError(String(e));
+        setStatus("Error");
+      } finally {
+        $("submitAnswerBtn").disabled = false;
+      }
+    }
+
+    // Main ask function
     async function ask() {
       setError("");
       rawNotes = "";
       rawExtra = "";
+
+      // Hide problem section when asking new question
+      $("problemSection").classList.remove("visible");
+      $("problemBtn").style.display = "none";
 
       var question = $("q").value.trim();
       if (!question) {
@@ -364,6 +575,9 @@
         showThinking("notes");
         setStatus("Thinking…");
       }
+
+      // Store question for problem generation
+      lastQuestion = question;
 
       try {
         var response = await fetch("/rag2/ask-stream", {
@@ -430,6 +644,10 @@
           if (rawExtra) {
             $("extra").innerHTML = renderMarkdown(rawExtra);
           }
+
+          // Store answer and show problem button
+          lastNotesAnswer = rawNotes;
+          $("problemBtn").style.display = "inline-block";
         }
 
         await typesetMath();
@@ -532,6 +750,20 @@
         rawNotes = "";
         rawExtra = "";
         renderChatConversation();
+      });
+
+      // Problem generation
+      $("problemBtn").addEventListener("click", generateProblem);
+
+      // New problem button
+      $("newProblemBtn").addEventListener("click", generateProblem);
+
+      // Submit answer for assessment
+      $("submitAnswerBtn").addEventListener("click", submitAnswer);
+
+      // Enter in answer field submits
+      $("studentAnswer").addEventListener("keydown", function (e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") submitAnswer();
       });
 
       window.addEventListener("error", function (e) {

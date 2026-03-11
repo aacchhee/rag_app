@@ -468,3 +468,138 @@ code {
 .single-mode-only {
   /* controlled by JS */
 }
+
+/* Problem section */
+.problem-row {
+  margin-top: 8px;
+}
+
+.problem-btn {
+  background: #2d5a27;
+  font-size: 13px;
+  padding: 8px 12px;
+  display: none;
+}
+
+.problem-btn:hover {
+  background: #3d7a35;
+}
+
+.problem-section {
+  margin-top: 14px;
+  display: none;
+}
+
+.problem-section.visible {
+  display: block;
+}
+
+.problem-box {
+  border: 1px solid #d4edda;
+  border-radius: 12px;
+  padding: 14px;
+  background: #f0f7f0;
+}
+
+.problem-box p {
+  margin: 0 0 10px;
+  line-height: 1.6;
+}
+
+.problem-box p:last-child {
+  margin-bottom: 0;
+}
+
+.problem-box ul,
+.problem-box ol {
+  margin: 4px 0 10px;
+  padding-left: 22px;
+}
+
+.problem-box li {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+.problem-box strong {
+  font-weight: 650;
+}
+
+.answer-input-area {
+  margin-top: 12px;
+  display: none;
+}
+
+.answer-input-area.visible {
+  display: block;
+}
+
+.answer-input-area label {
+  font-size: 14px;
+  margin: 0 0 6px;
+}
+
+.answer-input {
+  width: 100%;
+  min-height: 70px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  font-size: 14px;
+  box-sizing: border-box;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+.submit-answer-btn {
+  background: #0b57d0;
+  font-size: 13px;
+  padding: 8px 12px;
+  margin-top: 8px;
+}
+
+.submit-answer-btn:hover {
+  background: #0945a0;
+}
+
+.submit-answer-btn:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.assessment-box {
+  margin-top: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 14px;
+  background: #fafafa;
+  display: none;
+}
+
+.assessment-box.visible {
+  display: block;
+}
+
+.assessment-box p {
+  margin: 0 0 10px;
+  line-height: 1.6;
+}
+
+.assessment-box p:last-child {
+  margin-bottom: 0;
+}
+
+.assessment-box strong {
+  font-weight: 650;
+}
+
+.new-problem-btn {
+  background: #555;
+  font-size: 12px;
+  padding: 6px 10px;
+  margin-top: 8px;
+}
+
+.new-problem-btn:hover {
+  background: #444;
+}

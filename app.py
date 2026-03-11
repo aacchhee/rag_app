@@ -104,7 +104,6 @@ def health():
 
 
 # Original non-streaming endpoint (kept for backwards compatibility)
-
 @app.post("/ask")
 def ask():
     data = request.get_json(force=True) or {}
@@ -210,7 +209,6 @@ def ask():
 
 
 # Streaming endpoint (supports both single and chat mode)
-
 @app.post("/ask-stream")
 def ask_stream():
     data = request.get_json(force=True) or {}
@@ -351,6 +349,132 @@ def ask_stream():
 
         # Done
         yield _sse("done", {"coverage": coverage})
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+# Problem generation endpoint
+@app.post("/problem")
+def generate_problem():
+    data = request.get_json(force=True) or {}
+
+    q = (data.get("question") or "").strip()
+    notes_answer = (data.get("notes_answer") or "").strip()
+
+    if not q:
+        return jsonify(error="Missing 'question'"), 400
+
+    # Retrieve relevant chunks for the topic
+    q_emb = embed_query(q)
+    hits = retriever.search(q_emb, top_k=RAG.TOP_K_DEFAULT, log_hits=True)
+    sources, source_blocks = render_sources(hits)
+
+    app.logger.info("PROBLEM q=%r hits=%d", q[:120], len(hits))
+
+    def generate():
+        yield _sse("status", {"phase": "thinking"})
+
+        system_p = (
+            "You are a course assistant that generates practice problems for students.\n"
+            "Based on the SOURCES and the student's question, create ONE mathematical problem.\n\n"
+            "RULES:\n"
+            "- The problem must be solvable using the material in the sources\n"
+            "- Include a clear, specific task (e.g. 'Compute...', 'Find...', 'Show that...')\n"
+            "- The problem should have a concrete numerical or symbolic answer\n"
+            "- Use LaTeX for all math formulas\n"
+            "- After the problem, on a separate line write ANSWER: followed by the correct answer\n"
+            "- Keep the answer concise (a number, expression, or short derivation)\n\n"
+            "Output format:\n"
+            "**Problem:**\n"
+            "(problem statement)\n\n"
+            "ANSWER: (correct answer)\n"
+        )
+
+        user_p = (
+            "SOURCES:\n" + "\n".join(source_blocks)
+            + "\n\nStudent's question: " + q
+        )
+
+        if notes_answer:
+            user_p += "\n\nThe answer given to the student (for context):\n" + notes_answer
+
+        user_p += "\n\nGenerate one practice problem related to this topic."
+
+        yield _sse("status", {"phase": "generating"})
+
+        raw = ""
+        for token in chat_completion_stream(
+            [{"role": "system", "content": system_p}, {"role": "user", "content": user_p}],
+            temperature=0.5, max_tokens=800,
+        ):
+            raw += token
+            yield _sse("token", {"content": token})
+
+        yield _sse("done", {})
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# Answer assessment endpoint
+@app.post("/assess")
+def assess_answer():
+    data = request.get_json(force=True) or {}
+
+    problem = (data.get("problem") or "").strip()
+    student_answer = (data.get("student_answer") or "").strip()
+
+    if not problem:
+        return jsonify(error="Missing 'problem'"), 400
+    if not student_answer:
+        return jsonify(error="Missing 'student_answer'"), 400
+
+    app.logger.info("ASSESS problem_len=%d answer_len=%d", len(problem), len(student_answer))
+
+    def generate():
+        yield _sse("status", {"phase": "assessing"})
+
+        system_a = (
+            "You are a course assistant that assesses student answers to math problems.\n\n"
+            "RULES:\n"
+            "- Compare the student's answer to the correct answer in the problem\n"
+            "- Be encouraging but honest\n"
+            "- If wrong, explain where the mistake is and give a hint\n"
+            "- If partially correct, acknowledge what's right and point out what's missing\n"
+            "- If correct, confirm and optionally add a brief insight\n"
+            "- Use LaTeX for math formulas\n\n"
+            "Output format:\n"
+            "**Result:** ✅ Correct / ⚠️ Partially correct / ❌ Incorrect\n\n"
+            "(explanation)\n"
+        )
+
+        user_a = (
+            "PROBLEM AND CORRECT ANSWER:\n" + problem
+            + "\n\nSTUDENT'S ANSWER:\n" + student_answer
+            + "\n\nAssess the student's answer."
+        )
+
+        raw = ""
+        for token in chat_completion_stream(
+            [{"role": "system", "content": system_a}, {"role": "user", "content": user_a}],
+            temperature=0.3, max_tokens=600,
+        ):
+            raw += token
+            yield _sse("token", {"content": token})
+
+        yield _sse("done", {})
 
     return Response(
         stream_with_context(generate()),
