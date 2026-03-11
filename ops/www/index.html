@@ -358,6 +358,7 @@
       currentProblemRaw = "";
 
       // Reset problem UI
+      $("problemSection").style.display = "block";
       $("problemSection").classList.add("visible");
       $("answerInputArea").classList.remove("visible");
       $("assessmentBox").classList.remove("visible");
@@ -538,6 +539,7 @@
       rawExtra = "";
 
       // Hide problem section when asking new question
+      $("problemSection").style.display = "none";
       $("problemSection").classList.remove("visible");
       $("problemBtn").style.display = "none";
 
