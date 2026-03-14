@@ -525,6 +525,41 @@ code {
   font-weight: 650;
 }
 
+.problem-reveal-area {
+  margin-top: 10px;
+}
+
+.reveal-answer-btn {
+  background: #7a5f00;
+  font-size: 13px;
+  padding: 8px 12px;
+}
+
+.reveal-answer-btn:hover {
+  background: #927200;
+}
+
+.problem-answer-box {
+  margin-top: 10px;
+  border: 1px solid #eadfba;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fff8dd;
+}
+
+.problem-answer-box p {
+  margin: 0 0 10px;
+  line-height: 1.6;
+}
+
+.problem-answer-box p:last-child {
+  margin-bottom: 0;
+}
+
+.problem-answer-box strong {
+  font-weight: 650;
+}
+
 .answer-input-area {
   margin-top: 12px;
   display: none;

@@ -81,6 +81,20 @@ def _sse(event: str, data) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _extract_answer_from_problem(problem_text: str) -> str:
+    """
+    Backward-compat parser for old problem payloads that embedded:
+      ANSWER: ...
+    """
+    if not problem_text:
+        return ""
+
+    m = re.search(r"(?is)\bANSWER\s*:\s*(.+)$", problem_text)
+    if not m:
+        return ""
+    return m.group(1).strip()
+
+
 def _build_chat_history_block(history: list) -> str:
     """
     Format previous turns into a text block for the system prompt.
@@ -388,12 +402,10 @@ def generate_problem():
             "- Include a clear, specific task (e.g. 'Compute...', 'Find...', 'Show that...')\n"
             "- The problem should have a concrete numerical or symbolic answer\n"
             "- Use LaTeX for all math formulas\n"
-            "- After the problem, on a separate line write ANSWER: followed by the correct answer\n"
-            "- Keep the answer concise (a number, expression, or short derivation)\n\n"
+            "- Do NOT include the final answer or solution steps\n\n"
             "Output format:\n"
             "**Problem:**\n"
-            "(problem statement)\n\n"
-            "ANSWER: (correct answer)\n"
+            "(problem statement only)\n"
         )
 
         user_p = (
@@ -428,20 +440,94 @@ def generate_problem():
     )
 
 
+@app.post("/calculate-answer")
+def calculate_answer():
+    data = request.get_json(force=True) or {}
+
+    problem = (data.get("problem") or "").strip()
+    question = (data.get("question") or "").strip()
+    notes_answer = (data.get("notes_answer") or "").strip()
+
+    if not problem:
+        return jsonify(error="Missing 'problem'"), 400
+
+    retrieval_query = f"{question}\n\n{problem}".strip() if question else problem
+    q_emb = embed_query(retrieval_query)
+    hits = retriever.search(q_emb, top_k=RAG.TOP_K_DEFAULT, log_hits=True)
+    _, source_blocks = render_sources(hits)
+
+    app.logger.info(
+        "CALC_ANSWER problem_len=%d question_len=%d hits=%d",
+        len(problem), len(question), len(hits),
+    )
+
+    def generate():
+        yield _sse("status", {"phase": "thinking"})
+
+        system_c = (
+            "You are a course assistant that solves math practice problems.\n"
+            "Use the SOURCES when relevant, and provide the final answer to the problem.\n\n"
+            "RULES:\n"
+            "- Give a correct final answer\n"
+            "- Keep the output concise\n"
+            "- Use LaTeX for formulas\n"
+            "- Start the final line with: ANSWER:\n"
+            "- Do not add extra preamble text\n"
+        )
+
+        user_c = (
+            "SOURCES:\n" + "\n".join(source_blocks)
+            + "\n\nOriginal student question (context):\n" + (question or "(not provided)")
+            + "\n\nProblem:\n" + problem
+        )
+        if notes_answer:
+            user_c += "\n\nNotes answer used for context:\n" + notes_answer
+
+        user_c += "\n\nCompute the correct final answer."
+
+        yield _sse("status", {"phase": "generating"})
+
+        for token in chat_completion_stream(
+            [{"role": "system", "content": system_c}, {"role": "user", "content": user_c}],
+            temperature=0.2, max_tokens=300,
+        ):
+            yield _sse("token", {"content": token})
+
+        yield _sse("done", {})
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 # Answer assessment endpoint
 @app.post("/assess")
 def assess_answer():
     data = request.get_json(force=True) or {}
 
     problem = (data.get("problem") or "").strip()
+    correct_answer = (data.get("correct_answer") or "").strip()
     student_answer = (data.get("student_answer") or "").strip()
 
     if not problem:
         return jsonify(error="Missing 'problem'"), 400
+    if not correct_answer:
+        # Backward compatibility with older clients that sent "ANSWER:" inside problem.
+        correct_answer = _extract_answer_from_problem(problem)
+    if not correct_answer:
+        return jsonify(error="Missing 'correct_answer'"), 400
     if not student_answer:
         return jsonify(error="Missing 'student_answer'"), 400
 
-    app.logger.info("ASSESS problem_len=%d answer_len=%d", len(problem), len(student_answer))
+    app.logger.info(
+        "ASSESS problem_len=%d student_len=%d correct_len=%d",
+        len(problem), len(student_answer), len(correct_answer),
+    )
 
     def generate():
         yield _sse("status", {"phase": "assessing"})
@@ -449,7 +535,7 @@ def assess_answer():
         system_a = (
             "You are a course assistant that assesses student answers to math problems.\n\n"
             "RULES:\n"
-            "- Compare the student's answer to the correct answer in the problem\n"
+            "- Compare the student's answer to the provided correct answer\n"
             "- Be encouraging but honest\n"
             "- If wrong, explain where the mistake is and give a hint\n"
             "- If partially correct, acknowledge what's right and point out what's missing\n"
@@ -461,7 +547,8 @@ def assess_answer():
         )
 
         user_a = (
-            "PROBLEM AND CORRECT ANSWER:\n" + problem
+            "PROBLEM:\n" + problem
+            + "\n\nCORRECT ANSWER:\n" + correct_answer
             + "\n\nSTUDENT'S ANSWER:\n" + student_answer
             + "\n\nAssess the student's answer."
         )
