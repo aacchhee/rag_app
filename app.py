@@ -485,13 +485,44 @@ def calculate_answer():
 
         user_c += "\n\nCompute the correct final answer."
 
+        messages_c = [
+            {"role": "system", "content": system_c},
+            {"role": "user", "content": user_c},
+        ]
+
         yield _sse("status", {"phase": "generating"})
 
-        for token in chat_completion_stream(
-            [{"role": "system", "content": system_c}, {"role": "user", "content": user_c}],
-            temperature=0.2, max_tokens=300,
-        ):
-            yield _sse("token", {"content": token})
+        raw = ""
+        try:
+            for token in chat_completion_stream(
+                messages_c,
+                temperature=0.2, max_tokens=300,
+            ):
+                raw += token
+                yield _sse("token", {"content": token})
+        except Exception:
+            app.logger.exception("CALC_ANSWER stream failed")
+
+        # Fallback to blocking completion if stream yielded nothing.
+        if not raw.strip():
+            try:
+                raw = (chat_completion(
+                    messages_c,
+                    temperature=0.2, max_tokens=300,
+                ) or "").strip()
+            except Exception:
+                app.logger.exception("CALC_ANSWER fallback failed")
+                yield _sse("error", {"message": "Could not generate answer right now."})
+                yield _sse("done", {})
+                return
+
+            if raw:
+                yield _sse("token", {"content": raw})
+
+        if not raw.strip():
+            yield _sse("error", {"message": "No answer was generated."})
+            yield _sse("done", {})
+            return
 
         yield _sse("done", {})
 
@@ -553,13 +584,41 @@ def assess_answer():
             + "\n\nAssess the student's answer."
         )
 
+        messages_a = [
+            {"role": "system", "content": system_a},
+            {"role": "user", "content": user_a},
+        ]
+
         raw = ""
-        for token in chat_completion_stream(
-            [{"role": "system", "content": system_a}, {"role": "user", "content": user_a}],
-            temperature=0.3, max_tokens=600,
-        ):
-            raw += token
-            yield _sse("token", {"content": token})
+        try:
+            for token in chat_completion_stream(
+                messages_a,
+                temperature=0.3, max_tokens=600,
+            ):
+                raw += token
+                yield _sse("token", {"content": token})
+        except Exception:
+            app.logger.exception("ASSESS stream failed")
+
+        if not raw.strip():
+            try:
+                raw = (chat_completion(
+                    messages_a,
+                    temperature=0.3, max_tokens=600,
+                ) or "").strip()
+            except Exception:
+                app.logger.exception("ASSESS fallback failed")
+                yield _sse("error", {"message": "Could not assess answer right now."})
+                yield _sse("done", {})
+                return
+
+            if raw:
+                yield _sse("token", {"content": raw})
+
+        if not raw.strip():
+            yield _sse("error", {"message": "Assessment produced no output."})
+            yield _sse("done", {})
+            return
 
         yield _sse("done", {})
 
