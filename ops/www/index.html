@@ -396,88 +396,106 @@
         showThinking("problemAnswerBox");
       }
 
-      var answerRaw = "";
+      var maxAttempts = 3;
+      var lastErr = null;
 
       try {
-        var response = await fetch("/rag2/calculate-answer", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            problem: currentProblemRaw,
-            question: lastQuestion,
-            notes_answer: lastNotesAnswer
-          })
-        });
+        for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+          var answerRaw = "";
+          var response = await fetch("/rag2/calculate-answer", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              problem: currentProblemRaw,
+              question: lastQuestion,
+              notes_answer: lastNotesAnswer
+            })
+          });
 
-        if (!response.ok) {
-          var errText = await response.text();
-          throw new Error("HTTP " + response.status + "\n" + errText);
-        }
+          if (!response.ok) {
+            var errText = await response.text();
+            lastErr = new Error("HTTP " + response.status + "\n" + errText);
+            if (attempt < maxAttempts) {
+              continue;
+            }
+            throw lastErr;
+          }
 
-        var reader = response.body.getReader();
-        var decoder = new TextDecoder();
-        var buffer = "";
-        var currentEvent = null;
-        var streamError = "";
+          var reader = response.body.getReader();
+          var decoder = new TextDecoder();
+          var buffer = "";
+          var currentEvent = null;
+          var streamError = "";
 
-        while (true) {
-          var result = await reader.read();
-          if (result.done) break;
+          while (true) {
+            var result = await reader.read();
+            if (result.done) break;
 
-          buffer += decoder.decode(result.value, { stream: true });
+            buffer += decoder.decode(result.value, { stream: true });
 
-          var lines = buffer.split("\n");
-          buffer = lines.pop();
+            var lines = buffer.split("\n");
+            buffer = lines.pop();
 
-          for (var i = 0; i < lines.length; i++) {
-            var line = lines[i];
+            for (var i = 0; i < lines.length; i++) {
+              var line = lines[i];
 
-            if (line.startsWith("event: ")) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith("data: ") && currentEvent) {
-              var data;
-              try { data = JSON.parse(line.slice(6)); }
-              catch (e) { continue; }
+              if (line.startsWith("event: ")) {
+                currentEvent = line.slice(7).trim();
+              } else if (line.startsWith("data: ") && currentEvent) {
+                var data;
+                try { data = JSON.parse(line.slice(6)); }
+                catch (e) { continue; }
 
-              if (currentEvent === "token") {
-                answerRaw += data.content;
-                if (revealInUi) {
-                  $("problemAnswerBox").innerHTML = renderMarkdown(answerRaw);
-                  $("problemAnswerBox").classList.add("streaming-cursor");
-                  clearTimeout(mathRenderTimer);
-                  mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
+                if (currentEvent === "token") {
+                  answerRaw += (data.content == null ? "" : String(data.content));
+                  if (revealInUi) {
+                    $("problemAnswerBox").innerHTML = renderMarkdown(answerRaw);
+                    $("problemAnswerBox").classList.add("streaming-cursor");
+                    clearTimeout(mathRenderTimer);
+                    mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
+                  }
+                } else if (currentEvent === "status" && data.phase === "generating" && revealInUi) {
+                  $("problemAnswerBox").innerHTML = "";
+                } else if (currentEvent === "error") {
+                  streamError = data.message || "Could not generate answer.";
                 }
-              } else if (currentEvent === "status" && data.phase === "generating" && revealInUi) {
-                $("problemAnswerBox").innerHTML = "";
-              } else if (currentEvent === "error") {
-                streamError = data.message || "Could not generate answer.";
-              }
 
-              currentEvent = null;
-            } else if (line === "") {
-              currentEvent = null;
+                currentEvent = null;
+              } else if (line === "") {
+                currentEvent = null;
+              }
             }
           }
+
+          if (streamError) {
+            lastErr = new Error(streamError);
+            if (attempt < maxAttempts) {
+              continue;
+            }
+            throw lastErr;
+          }
+
+          currentCorrectAnswer = answerRaw.trim();
+          if (!currentCorrectAnswer) {
+            lastErr = new Error("No answer was generated.");
+            if (attempt < maxAttempts) {
+              continue;
+            }
+            throw lastErr;
+          }
+
+          if (revealInUi) {
+            $("problemAnswerBox").classList.remove("streaming-cursor");
+            $("problemAnswerBox").innerHTML = renderMarkdown(currentCorrectAnswer);
+            $("revealAnswerBtn").textContent = "Hide answer";
+            isAnswerRevealed = true;
+            await typesetMath();
+          }
+
+          return currentCorrectAnswer;
         }
 
-        if (streamError) {
-          throw new Error(streamError);
-        }
-
-        currentCorrectAnswer = answerRaw.trim();
-        if (!currentCorrectAnswer) {
-          throw new Error("No answer was generated.");
-        }
-
-        if (revealInUi) {
-          $("problemAnswerBox").classList.remove("streaming-cursor");
-          $("problemAnswerBox").innerHTML = renderMarkdown(currentCorrectAnswer);
-          $("revealAnswerBtn").textContent = "Hide answer";
-          isAnswerRevealed = true;
-          await typesetMath();
-        }
-
-        return currentCorrectAnswer;
+        throw (lastErr || new Error("Could not generate answer."));
       } finally {
         revealBtn.disabled = false;
       }

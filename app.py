@@ -95,6 +95,37 @@ def _extract_answer_from_problem(problem_text: str) -> str:
     return m.group(1).strip()
 
 
+def _nonempty_completion(
+    candidates: list[list[dict]],
+    *,
+    temperature: float,
+    max_tokens: int,
+    retries_per_candidate: int = 2,
+) -> str:
+    """
+    Try multiple completion prompts/retries and return the first non-empty answer.
+    """
+    for messages in candidates:
+        for attempt in range(1, retries_per_candidate + 1):
+            try:
+                out = chat_completion(
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            except Exception:
+                app.logger.exception("completion failed (attempt %d)", attempt)
+                continue
+
+            txt = (out or "").strip()
+            if txt:
+                return txt
+
+            app.logger.warning("empty completion (attempt %d)", attempt)
+
+    return ""
+
+
 def _build_chat_history_block(history: list) -> str:
     """
     Format previous turns into a text block for the system prompt.
@@ -485,45 +516,56 @@ def calculate_answer():
 
         user_c += "\n\nCompute the correct final answer."
 
-        messages_c = [
-            {"role": "system", "content": system_c},
-            {"role": "user", "content": user_c},
+        # Fallback prompt without retrieval context to reduce empty outputs from some backends.
+        system_simple = (
+            "Solve the given math problem and return the answer.\n"
+            "Rules:\n"
+            "- Use LaTeX for formulas\n"
+            "- End with a line that starts exactly with ANSWER:\n"
+            "- Output must not be empty\n"
+        )
+        user_simple = (
+            "Problem:\n" + problem
+            + "\n\nGive the correct final answer."
+        )
+
+        # Last-resort strict format fallback.
+        system_strict = (
+            "Return exactly one non-empty line in this format:\n"
+            "ANSWER: <final answer>\n"
+        )
+        user_strict = "Problem:\n" + problem
+
+        candidates = [
+            [
+                {"role": "system", "content": system_c},
+                {"role": "user", "content": user_c},
+            ],
+            [
+                {"role": "system", "content": system_simple},
+                {"role": "user", "content": user_simple},
+            ],
+            [
+                {"role": "system", "content": system_strict},
+                {"role": "user", "content": user_strict},
+            ],
         ]
 
         yield _sse("status", {"phase": "generating"})
 
-        raw = ""
-        try:
-            for token in chat_completion_stream(
-                messages_c,
-                temperature=0.2, max_tokens=300,
-            ):
-                raw += token
-                yield _sse("token", {"content": token})
-        except Exception:
-            app.logger.exception("CALC_ANSWER stream failed")
-
-        # Fallback to blocking completion if stream yielded nothing.
+        raw = _nonempty_completion(
+            candidates,
+            temperature=0.2,
+            max_tokens=300,
+            retries_per_candidate=3,
+        )
         if not raw.strip():
-            try:
-                raw = (chat_completion(
-                    messages_c,
-                    temperature=0.2, max_tokens=300,
-                ) or "").strip()
-            except Exception:
-                app.logger.exception("CALC_ANSWER fallback failed")
-                yield _sse("error", {"message": "Could not generate answer right now."})
-                yield _sse("done", {})
-                return
-
-            if raw:
-                yield _sse("token", {"content": raw})
-
-        if not raw.strip():
-            yield _sse("error", {"message": "No answer was generated."})
+            # Keep API stable for frontend, but avoid empty-success behavior.
+            yield _sse("error", {"message": "Could not generate answer right now."})
             yield _sse("done", {})
             return
 
+        yield _sse("token", {"content": raw})
         yield _sse("done", {})
 
     return Response(
