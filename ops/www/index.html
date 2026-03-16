@@ -80,21 +80,14 @@
         <div id="sources" class="sources"></div>
 
         <details id="extraBox" style="display:none;">
-          <br>
           <summary>Extra context (not from notes)</summary>
           <div id="extra" class="answer" style="margin-top:10px;"></div>
         </details>
 
         <!-- Problem section (appears after answer) -->
         <div id="problemSection" class="problem-section" style="display:none;">
-          <br>
           <h2>Practice Problem</h2>
           <div id="problemContent" class="problem-box"></div>
-
-          <div class="problem-reveal-area">
-            <button id="revealAnswerBtn" class="reveal-answer-btn" type="button">Reveal answer</button>
-            <div id="problemAnswerBox" class="problem-answer-box" style="display:none;"></div>
-          </div>
 
           <div id="answerInputArea" class="answer-input-area">
             <label for="studentAnswer">Your answer:</label>
@@ -184,13 +177,6 @@
       return html;
     }
 
-    function stripEmbeddedAnswer(problemText) {
-      if (!problemText) return "";
-      return String(problemText)
-        .replace(/\n?\s*\*{0,2}\s*ANSWER\s*\*{0,2}\s*:\s*[\s\S]*$/i, "")
-        .trim();
-    }
-
     function showThinking(targetId) {
       $(targetId).innerHTML =
         '<div class="thinking">' +
@@ -232,8 +218,6 @@
     var lastQuestion = "";       // last question asked (for problem generation)
     var lastNotesAnswer = "";    // last notes answer (for problem context)
     var currentProblemRaw = "";  // raw problem text from LLM
-    var currentCorrectAnswer = "";
-    var isAnswerRevealed = false;
 
     var MAX_TURNS = 20;
 
@@ -368,170 +352,10 @@
       mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
     }
 
-    function hideProblemAnswer() {
-      isAnswerRevealed = false;
-      $("problemAnswerBox").style.display = "none";
-      $("problemAnswerBox").classList.remove("streaming-cursor");
-      $("revealAnswerBtn").textContent = "Reveal answer";
-    }
-
-    async function fetchCorrectAnswer(revealInUi) {
-      if (currentCorrectAnswer) {
-        if (revealInUi) {
-          $("problemAnswerBox").style.display = "block";
-          $("problemAnswerBox").innerHTML = renderMarkdown(currentCorrectAnswer);
-          $("problemAnswerBox").classList.remove("streaming-cursor");
-          $("revealAnswerBtn").textContent = "Hide answer";
-          isAnswerRevealed = true;
-          await typesetMath();
-        }
-        return currentCorrectAnswer;
-      }
-
-      var revealBtn = $("revealAnswerBtn");
-      revealBtn.disabled = true;
-
-      if (revealInUi) {
-        $("problemAnswerBox").style.display = "block";
-        showThinking("problemAnswerBox");
-      }
-
-      var maxAttempts = 3;
-      var lastErr = null;
-
-      try {
-        for (var attempt = 1; attempt <= maxAttempts; attempt++) {
-          var answerRaw = "";
-          var response = await fetch("/rag2/calculate-answer", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              problem: currentProblemRaw,
-              question: lastQuestion,
-              notes_answer: lastNotesAnswer
-            })
-          });
-
-          if (!response.ok) {
-            var errText = await response.text();
-            lastErr = new Error("HTTP " + response.status + "\n" + errText);
-            if (attempt < maxAttempts) {
-              continue;
-            }
-            throw lastErr;
-          }
-
-          var reader = response.body.getReader();
-          var decoder = new TextDecoder();
-          var buffer = "";
-          var currentEvent = null;
-          var streamError = "";
-
-          while (true) {
-            var result = await reader.read();
-            if (result.done) break;
-
-            buffer += decoder.decode(result.value, { stream: true });
-
-            var lines = buffer.split("\n");
-            buffer = lines.pop();
-
-            for (var i = 0; i < lines.length; i++) {
-              var line = lines[i];
-
-              if (line.startsWith("event: ")) {
-                currentEvent = line.slice(7).trim();
-              } else if (line.startsWith("data: ") && currentEvent) {
-                var data;
-                try { data = JSON.parse(line.slice(6)); }
-                catch (e) { continue; }
-
-                if (currentEvent === "token") {
-                  answerRaw += (data.content == null ? "" : String(data.content));
-                  if (revealInUi) {
-                    $("problemAnswerBox").innerHTML = renderMarkdown(answerRaw);
-                    $("problemAnswerBox").classList.add("streaming-cursor");
-                    clearTimeout(mathRenderTimer);
-                    mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
-                  }
-                } else if (currentEvent === "status" && data.phase === "generating" && revealInUi) {
-                  $("problemAnswerBox").innerHTML = "";
-                } else if (currentEvent === "error") {
-                  streamError = data.message || "Could not generate answer.";
-                }
-
-                currentEvent = null;
-              } else if (line === "") {
-                currentEvent = null;
-              }
-            }
-          }
-
-          if (streamError) {
-            lastErr = new Error(streamError);
-            if (attempt < maxAttempts) {
-              continue;
-            }
-            throw lastErr;
-          }
-
-          currentCorrectAnswer = answerRaw.trim();
-          if (!currentCorrectAnswer) {
-            lastErr = new Error("No answer was generated.");
-            if (attempt < maxAttempts) {
-              continue;
-            }
-            throw lastErr;
-          }
-
-          if (revealInUi) {
-            $("problemAnswerBox").classList.remove("streaming-cursor");
-            $("problemAnswerBox").innerHTML = renderMarkdown(currentCorrectAnswer);
-            $("revealAnswerBtn").textContent = "Hide answer";
-            isAnswerRevealed = true;
-            await typesetMath();
-          }
-
-          return currentCorrectAnswer;
-        }
-
-        throw (lastErr || new Error("Could not generate answer."));
-      } finally {
-        revealBtn.disabled = false;
-      }
-    }
-
-    async function toggleRevealAnswer() {
-      setError("");
-
-      if (isAnswerRevealed) {
-        hideProblemAnswer();
-        setStatus("Answer hidden.");
-        return;
-      }
-
-      if (!currentProblemRaw) {
-        setError("Generate a problem first.");
-        return;
-      }
-
-      setStatus("Calculating answer...");
-      try {
-        await fetchCorrectAnswer(true);
-        setStatus("Answer revealed.");
-      } catch (e) {
-        setError(String(e));
-        setStatus("Error");
-        hideProblemAnswer();
-      }
-    }
-
     // Problem generation
     async function generateProblem() {
       setError("");
       currentProblemRaw = "";
-      currentCorrectAnswer = "";
-      isAnswerRevealed = false;
 
       // Reset problem UI
       $("problemSection").style.display = "block";
@@ -540,11 +364,6 @@
       $("assessmentBox").classList.remove("visible");
       $("assessmentBox").innerHTML = "";
       $("studentAnswer").value = "";
-      $("problemAnswerBox").style.display = "none";
-      $("problemAnswerBox").innerHTML = "";
-      $("problemAnswerBox").classList.remove("streaming-cursor");
-      $("revealAnswerBtn").textContent = "Reveal answer";
-      $("revealAnswerBtn").disabled = true;
       showThinking("problemContent");
 
       $("problemBtn").disabled = true;
@@ -568,7 +387,6 @@
         var reader = response.body.getReader();
         var decoder = new TextDecoder();
         var buffer = "";
-        var currentEvent = null;
 
         while (true) {
           var result = await reader.read();
@@ -579,6 +397,7 @@
           var lines = buffer.split("\n");
           buffer = lines.pop();
 
+          var currentEvent = null;
           for (var i = 0; i < lines.length; i++) {
             var line = lines[i];
 
@@ -591,7 +410,7 @@
 
               if (currentEvent === "token") {
                 currentProblemRaw += data.content;
-                $("problemContent").innerHTML = renderMarkdown(stripEmbeddedAnswer(currentProblemRaw));
+                $("problemContent").innerHTML = renderMarkdown(currentProblemRaw);
                 $("problemContent").classList.add("streaming-cursor");
                 clearTimeout(mathRenderTimer);
                 mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
@@ -609,10 +428,8 @@
         }
 
         // Final render
-        currentProblemRaw = stripEmbeddedAnswer(currentProblemRaw);
         $("problemContent").classList.remove("streaming-cursor");
         $("problemContent").innerHTML = renderMarkdown(currentProblemRaw);
-        $("revealAnswerBtn").disabled = false;
 
         // Show answer input
         $("answerInputArea").classList.add("visible");
@@ -632,11 +449,6 @@
     async function submitAnswer() {
       setError("");
 
-      if (!currentProblemRaw) {
-        setError("Generate a problem first.");
-        return;
-      }
-
       var studentAnswer = $("studentAnswer").value.trim();
       if (!studentAnswer) {
         setError("Please enter your answer.");
@@ -652,17 +464,11 @@
       var assessRaw = "";
 
       try {
-        if (!currentCorrectAnswer) {
-          setStatus("Preparing answer key...");
-          await fetchCorrectAnswer(false);
-        }
-
         var response = await fetch("/rag2/assess", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             problem: currentProblemRaw,
-            correct_answer: currentCorrectAnswer,
             student_answer: studentAnswer
           })
         });
@@ -675,8 +481,6 @@
         var reader = response.body.getReader();
         var decoder = new TextDecoder();
         var buffer = "";
-        var currentEvent = null;
-        var streamError = "";
 
         while (true) {
           var result = await reader.read();
@@ -687,6 +491,7 @@
           var lines = buffer.split("\n");
           buffer = lines.pop();
 
+          var currentEvent = null;
           for (var i = 0; i < lines.length; i++) {
             var line = lines[i];
 
@@ -703,8 +508,6 @@
                 $("assessmentBox").classList.add("streaming-cursor");
                 clearTimeout(mathRenderTimer);
                 mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
-              } else if (currentEvent === "error") {
-                streamError = data.message || "Could not assess answer.";
               }
 
               currentEvent = null;
@@ -712,10 +515,6 @@
               currentEvent = null;
             }
           }
-        }
-
-        if (streamError) {
-          throw new Error(streamError);
         }
 
         // Final render
@@ -726,8 +525,6 @@
         setStatus("Done.");
 
       } catch (e) {
-        $("assessmentBox").classList.remove("streaming-cursor");
-        $("assessmentBox").innerHTML = "<div class=\"muted\">Assessment failed. Please try again.</div>";
         setError(String(e));
         setStatus("Error");
       } finally {
@@ -745,14 +542,6 @@
       $("problemSection").style.display = "none";
       $("problemSection").classList.remove("visible");
       $("problemBtn").style.display = "none";
-      currentProblemRaw = "";
-      currentCorrectAnswer = "";
-      isAnswerRevealed = false;
-      $("problemAnswerBox").innerHTML = "";
-      $("problemAnswerBox").style.display = "none";
-      $("problemAnswerBox").classList.remove("streaming-cursor");
-      $("revealAnswerBtn").textContent = "Reveal answer";
-      $("revealAnswerBtn").disabled = false;
 
       var question = $("q").value.trim();
       if (!question) {
@@ -808,7 +597,6 @@
         var decoder = new TextDecoder();
         var buffer = "";
         var streamCoverage = "";
-        var currentEvent = null;
 
         while (true) {
           var result = await reader.read();
@@ -820,6 +608,7 @@
           var lines = buffer.split("\n");
           buffer = lines.pop();
 
+          var currentEvent = null;
           for (var i = 0; i < lines.length; i++) {
             var line = lines[i];
 
@@ -967,9 +756,6 @@
 
       // Problem generation
       $("problemBtn").addEventListener("click", generateProblem);
-
-      // Reveal/hide generated answer
-      $("revealAnswerBtn").addEventListener("click", toggleRevealAnswer);
 
       // New problem button
       $("newProblemBtn").addEventListener("click", generateProblem);
