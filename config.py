@@ -1,3 +1,5 @@
+import copy
+import json
 import os
 
 
@@ -7,6 +9,9 @@ class Config:
     CHAT_MODEL = os.getenv("CHAT_MODEL")
     CHAT_TEMPERATURE = float(os.getenv("CHAT_TEMPERATURE", "0.2"))
     CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "900"))
+    CHAT_ENABLE_THINKING = os.getenv("CHAT_ENABLE_THINKING")
+    CHAT_RETRY_WITH_THINKING_DISABLED = os.getenv("CHAT_RETRY_WITH_THINKING_DISABLED", "true")
+    CHAT_EXTRA_BODY_JSON = os.getenv("CHAT_EXTRA_BODY_JSON")
 
     # --- Flask ---
     DEBUG = os.getenv("DEBUG", "false").lower() == "true"
@@ -34,6 +39,50 @@ class Config:
     # --- LangChain-compatible base URL ---
     # OpenAI-compatible endpoints: strip /v1/chat/completions or /v1/embeddings
     # to get the base URL that LangChain expects
+    @staticmethod
+    def _parse_bool(raw: str | None, *, default: bool | None = None) -> bool | None:
+        if raw is None or raw.strip() == "":
+            return default
+        value = raw.strip().lower()
+        if value in {"1", "true", "yes", "on"}:
+            return True
+        if value in {"0", "false", "no", "off"}:
+            return False
+        raise RuntimeError(f"Invalid boolean value: {raw!r}")
+
+    @classmethod
+    def chat_enable_thinking(cls) -> bool | None:
+        return cls._parse_bool(cls.CHAT_ENABLE_THINKING, default=None)
+
+    @classmethod
+    def chat_retry_with_thinking_disabled(cls) -> bool:
+        return bool(cls._parse_bool(cls.CHAT_RETRY_WITH_THINKING_DISABLED, default=True))
+
+    @classmethod
+    def chat_extra_body(cls, *, enable_thinking: bool | None = None) -> dict | None:
+        extra_body: dict = {}
+        raw = cls.CHAT_EXTRA_BODY_JSON
+        if raw and raw.strip():
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict):
+                raise RuntimeError("CHAT_EXTRA_BODY_JSON must decode to a JSON object")
+            extra_body = copy.deepcopy(parsed)
+
+        effective_enable_thinking = (
+            enable_thinking
+            if enable_thinking is not None
+            else cls.chat_enable_thinking()
+        )
+        if effective_enable_thinking is not None:
+            chat_template_kwargs = extra_body.setdefault("chat_template_kwargs", {})
+            if not isinstance(chat_template_kwargs, dict):
+                raise RuntimeError(
+                    "CHAT_EXTRA_BODY_JSON.chat_template_kwargs must be a JSON object"
+                )
+            chat_template_kwargs["enable_thinking"] = effective_enable_thinking
+
+        return extra_body or None
+
     @classmethod
     def chat_base_url(cls) -> str:
         """Return base URL for ChatOpenAI (strip trailing path after /v1)."""

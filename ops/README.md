@@ -25,3 +25,6 @@ This folder contains *sanitized* templates for:
     /etc/rag.env
     /etc/rag2.env
   (Do NOT commit real env files with secrets.)
+- Useful chat flags when a reasoning model returns `reasoning_content` but empty `content`:
+    CHAT_ENABLE_THINKING=false
+    CHAT_RETRY_WITH_THINKING_DISABLED=true
