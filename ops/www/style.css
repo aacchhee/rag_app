@@ -603,3 +603,29 @@ code {
 .new-problem-btn:hover {
   background: #444;
 }
+
+.debug-box {
+  margin-top: 16px;
+  border: 1px solid #d6d6d6;
+  border-radius: 12px;
+  background: #fafafa;
+}
+
+.debug-box summary {
+  cursor: pointer;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #555;
+}
+
+.debug-log {
+  margin: 0;
+  padding: 0 14px 14px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #333;
+}

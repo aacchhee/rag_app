@@ -11,6 +11,7 @@ import numpy as np
 from qdrant_client import QdrantClient
 
 from config import Config
+from log_utils import current_request_id
 
 logger = logging.getLogger("gunicorn.error")
 
@@ -54,7 +55,8 @@ class Retriever:
         # Get point count for logging
         info = self.client.get_collection(self.collection)
         logger.info(
-            "[retriever] connected to Qdrant collection '%s' (%d points)",
+            "[req:%s] [retriever] connected to Qdrant collection '%s' (%d points)",
+            current_request_id(),
             self.collection,
             info.points_count,
         )
@@ -67,14 +69,29 @@ class Retriever:
             q = q.flatten()
 
         if log_hits:
-            logger.info("[retrieve] top_k=%d vec_dim=%d", top_k, len(q))
+            logger.info(
+                "[req:%s] [retrieve] top_k=%d vec_dim=%d",
+                current_request_id(),
+                top_k,
+                len(q),
+            )
 
-        results = self.client.query_points(
-            collection_name=self.collection,
-            query=q.tolist(),
-            limit=top_k,
-            with_payload=True,
-        ).points
+        try:
+            results = self.client.query_points(
+                collection_name=self.collection,
+                query=q.tolist(),
+                limit=top_k,
+                with_payload=True,
+            ).points
+        except Exception:
+            logger.exception(
+                "[req:%s] [retrieve] query_points failed collection=%s top_k=%d vec_dim=%d",
+                current_request_id(),
+                self.collection,
+                top_k,
+                len(q),
+            )
+            raise
 
         hits: List[Hit] = []
         for rank, point in enumerate(results, start=1):
@@ -92,7 +109,8 @@ class Retriever:
 
             if log_hits:
                 logger.info(
-                    "[retrieve] #%d id=%s score=%.6f src=%s heading=%s chars=%d preview=%s",
+                    "[req:%s] [retrieve] #%d id=%s score=%.6f src=%s heading=%s chars=%d preview=%s",
+                    current_request_id(),
                     rank,
                     point.id,
                     hit.score,

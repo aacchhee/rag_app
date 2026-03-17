@@ -14,6 +14,10 @@ ExecStartPre=/bin/rm -f /run/rag2/rag2.sock
 
 ExecStart=/home/rag/rag_app_qdrant/venv/bin/gunicorn \
   --workers 2 \
+  --access-logfile - \
+  --error-logfile - \
+  --log-level info \
+  --capture-output \
   --umask 007 \
   --bind unix:/run/rag2/rag2.sock \
   app:app

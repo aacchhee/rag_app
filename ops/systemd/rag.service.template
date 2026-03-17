@@ -11,6 +11,10 @@ EnvironmentFile=/etc/rag.env
 
 ExecStart=/home/rag/rag_app/venv/bin/gunicorn \
   --workers 2 \
+  --access-logfile - \
+  --error-logfile - \
+  --log-level info \
+  --capture-output \
   --bind unix:/run/rag/rag.sock \
   app:app
 

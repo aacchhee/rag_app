@@ -112,6 +112,11 @@
         <div class="chat-scroll" id="chatScroll"></div>
       </div>
 
+      <details class="debug-box">
+        <summary>Debug log</summary>
+        <pre id="debugLog" class="debug-log"></pre>
+      </details>
+
       <div id="err" class="err"></div>
     </div>
   </div>
@@ -119,7 +124,110 @@
   <script>
     function $(id) { return document.getElementById(id); }
     function setStatus(msg) { $("status").textContent = msg || ""; }
-    function setError(msg) { $("err").textContent = msg || ""; }
+    function setError(msg) {
+      $("err").textContent = msg || "";
+      if (msg) logDebug("UI error", { message: String(msg) });
+    }
+
+    function debugStamp() {
+      return new Date().toISOString();
+    }
+
+    function logDebug(message, data) {
+      var line = "[" + debugStamp() + "] " + message;
+      if (typeof data !== "undefined") {
+        try {
+          line += " " + JSON.stringify(data);
+        } catch (e) {
+          line += " " + String(data);
+        }
+      }
+
+      var logEl = $("debugLog");
+      if (logEl) {
+        logEl.textContent += line + "\n";
+        var lines = logEl.textContent.split("\n");
+        if (lines.length > 300) {
+          logEl.textContent = lines.slice(lines.length - 300).join("\n");
+        }
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      console.log("[rag2]", message, data || "");
+    }
+
+    function responseDebugInfo(response) {
+      return {
+        status: response.status,
+        ok: response.ok,
+        contentType: response.headers.get("content-type"),
+        requestId: response.headers.get("x-request-id")
+      };
+    }
+
+    function parseSSEBlock(block) {
+      var eventName = "message";
+      var dataLines = [];
+      var lines = block.split("\n");
+
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].replace(/\r$/, "");
+        if (!line || line.startsWith(":")) continue;
+        if (line.startsWith("event:")) {
+          eventName = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          dataLines.push(line.slice(5).trimStart());
+        }
+      }
+
+      if (!dataLines.length) return null;
+
+      try {
+        return { event: eventName, data: JSON.parse(dataLines.join("\n")) };
+      } catch (e) {
+        logDebug("Failed to parse SSE data", { event: eventName, raw: dataLines.join("\n").slice(0, 300) });
+        return null;
+      }
+    }
+
+    function drainSSEBuffer(buffer, onEvent) {
+      buffer = buffer.replace(/\r\n/g, "\n");
+      var boundary = buffer.indexOf("\n\n");
+
+      while (boundary !== -1) {
+        var block = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+
+        if (block.trim()) {
+          var parsed = parseSSEBlock(block);
+          if (parsed) onEvent(parsed.event, parsed.data);
+        }
+
+        boundary = buffer.indexOf("\n\n");
+      }
+
+      return buffer;
+    }
+
+    async function readEventStream(response, onEvent) {
+      var reader = response.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = "";
+
+      while (true) {
+        var result = await reader.read();
+        if (result.done) break;
+        buffer += decoder.decode(result.value, { stream: true });
+        buffer = drainSSEBuffer(buffer, onEvent);
+      }
+
+      buffer += decoder.decode();
+      buffer = drainSSEBuffer(buffer, onEvent);
+
+      if (buffer.trim()) {
+        logDebug("SSE stream ended with leftover buffer", { tail: buffer.slice(-300) });
+      }
+    }
 
     function escapeHtml(str) {
       return String(str || "").replace(/[&<>"']/g, function (c) {
@@ -370,6 +478,7 @@
       setStatus("Generating problem…");
 
       try {
+        logDebug("Problem request start", { questionLen: (lastQuestion || "").length, notesLen: (lastNotesAnswer || "").length });
         var response = await fetch("/rag2/problem", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -383,49 +492,36 @@
           var errText = await response.text();
           throw new Error("HTTP " + response.status + "\n" + errText);
         }
+        logDebug("Problem response", responseDebugInfo(response));
 
-        var reader = response.body.getReader();
-        var decoder = new TextDecoder();
-        var buffer = "";
-
-        while (true) {
-          var result = await reader.read();
-          if (result.done) break;
-
-          buffer += decoder.decode(result.value, { stream: true });
-
-          var lines = buffer.split("\n");
-          buffer = lines.pop();
-
-          var currentEvent = null;
-          for (var i = 0; i < lines.length; i++) {
-            var line = lines[i];
-
-            if (line.startsWith("event: ")) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith("data: ") && currentEvent) {
-              var data;
-              try { data = JSON.parse(line.slice(6)); }
-              catch (e) { continue; }
-
-              if (currentEvent === "token") {
-                currentProblemRaw += data.content;
-                $("problemContent").innerHTML = renderMarkdown(currentProblemRaw);
-                $("problemContent").classList.add("streaming-cursor");
-                clearTimeout(mathRenderTimer);
-                mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
-              } else if (currentEvent === "status") {
-                if (data.phase === "generating") {
-                  $("problemContent").innerHTML = "";
-                }
-              }
-
-              currentEvent = null;
-            } else if (line === "") {
-              currentEvent = null;
-            }
+        await readEventStream(response, function (event, data) {
+          if (event === "meta") {
+            logDebug("Problem stream meta", data);
+            return;
           }
-        }
+          if (event === "status") {
+            logDebug("Problem stream status", data);
+            if (data.phase === "generating") {
+              $("problemContent").innerHTML = "";
+            }
+            return;
+          }
+          if (event === "token") {
+            currentProblemRaw += data.content || "";
+            $("problemContent").innerHTML = renderMarkdown(currentProblemRaw);
+            $("problemContent").classList.add("streaming-cursor");
+            clearTimeout(mathRenderTimer);
+            mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
+            return;
+          }
+          if (event === "error") {
+            logDebug("Problem stream error", data);
+            throw new Error((data && data.message ? data.message : "Problem stream error") + (data && data.request_id ? " [request_id=" + data.request_id + "]" : ""));
+          }
+          if (event === "done") {
+            logDebug("Problem stream done", data);
+          }
+        });
 
         // Final render
         $("problemContent").classList.remove("streaming-cursor");
@@ -438,6 +534,7 @@
         setStatus("Problem ready — try solving it!");
 
       } catch (e) {
+        logDebug("Problem request failed", { error: String(e) });
         setError(String(e));
         setStatus("Error");
       } finally {
@@ -464,6 +561,7 @@
       var assessRaw = "";
 
       try {
+        logDebug("Assess request start", { problemLen: (currentProblemRaw || "").length, answerLen: studentAnswer.length });
         var response = await fetch("/rag2/assess", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -477,45 +575,33 @@
           var errText = await response.text();
           throw new Error("HTTP " + response.status + "\n" + errText);
         }
+        logDebug("Assess response", responseDebugInfo(response));
 
-        var reader = response.body.getReader();
-        var decoder = new TextDecoder();
-        var buffer = "";
-
-        while (true) {
-          var result = await reader.read();
-          if (result.done) break;
-
-          buffer += decoder.decode(result.value, { stream: true });
-
-          var lines = buffer.split("\n");
-          buffer = lines.pop();
-
-          var currentEvent = null;
-          for (var i = 0; i < lines.length; i++) {
-            var line = lines[i];
-
-            if (line.startsWith("event: ")) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith("data: ") && currentEvent) {
-              var data;
-              try { data = JSON.parse(line.slice(6)); }
-              catch (e) { continue; }
-
-              if (currentEvent === "token") {
-                assessRaw += data.content;
-                $("assessmentBox").innerHTML = renderMarkdown(assessRaw);
-                $("assessmentBox").classList.add("streaming-cursor");
-                clearTimeout(mathRenderTimer);
-                mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
-              }
-
-              currentEvent = null;
-            } else if (line === "") {
-              currentEvent = null;
-            }
+        await readEventStream(response, function (event, data) {
+          if (event === "meta") {
+            logDebug("Assess stream meta", data);
+            return;
           }
-        }
+          if (event === "status") {
+            logDebug("Assess stream status", data);
+            return;
+          }
+          if (event === "token") {
+            assessRaw += data.content || "";
+            $("assessmentBox").innerHTML = renderMarkdown(assessRaw);
+            $("assessmentBox").classList.add("streaming-cursor");
+            clearTimeout(mathRenderTimer);
+            mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
+            return;
+          }
+          if (event === "error") {
+            logDebug("Assess stream error", data);
+            throw new Error((data && data.message ? data.message : "Assessment stream error") + (data && data.request_id ? " [request_id=" + data.request_id + "]" : ""));
+          }
+          if (event === "done") {
+            logDebug("Assess stream done", data);
+          }
+        });
 
         // Final render
         $("assessmentBox").classList.remove("streaming-cursor");
@@ -525,6 +611,7 @@
         setStatus("Done.");
 
       } catch (e) {
+        logDebug("Assess request failed", { error: String(e) });
         setError(String(e));
         setStatus("Error");
       } finally {
@@ -582,6 +669,12 @@
       lastQuestion = question;
 
       try {
+        logDebug("Ask request start", {
+          questionLen: question.length,
+          chatMode: isChatMode,
+          historyTurns: payload.history.length,
+          extraMode: payload.extra_mode
+        });
         var response = await fetch("/rag2/ask-stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -592,44 +685,15 @@
           var errText = await response.text();
           throw new Error("HTTP " + response.status + "\n" + errText);
         }
-
-        var reader = response.body.getReader();
-        var decoder = new TextDecoder();
-        var buffer = "";
+        logDebug("Ask response", responseDebugInfo(response));
         var streamCoverage = "";
 
-        while (true) {
-          var result = await reader.read();
-          if (result.done) break;
-
-          buffer += decoder.decode(result.value, { stream: true });
-
-          // Process complete SSE messages
-          var lines = buffer.split("\n");
-          buffer = lines.pop();
-
-          var currentEvent = null;
-          for (var i = 0; i < lines.length; i++) {
-            var line = lines[i];
-
-            if (line.startsWith("event: ")) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith("data: ") && currentEvent) {
-              var data;
-              try { data = JSON.parse(line.slice(6)); }
-              catch (e) { continue; }
-
-              if (currentEvent === "notes_done" || currentEvent === "done") {
-                if (data.coverage) streamCoverage = data.coverage;
-              }
-
-              handleSSE(currentEvent, data);
-              currentEvent = null;
-            } else if (line === "") {
-              currentEvent = null;
-            }
+        await readEventStream(response, function (event, data) {
+          if (event === "notes_done" || event === "done") {
+            if (data.coverage) streamCoverage = data.coverage;
           }
-        }
+          handleSSE(event, data);
+        });
 
         // Final render
         if (isChatMode) {
@@ -656,6 +720,7 @@
         setStatus("Done.");
 
       } catch (e) {
+        logDebug("Ask request failed", { error: String(e), chatMode: isChatMode });
         setError(String(e));
         setStatus("Error");
       } finally {
@@ -669,7 +734,12 @@
 
     function handleSSE(event, data) {
       switch (event) {
+        case "meta":
+          logDebug("Ask stream meta", data);
+          break;
+
         case "status":
+          logDebug("Ask stream status", data);
           if (data.phase === "thinking") {
             setStatus("Searching notes…");
             if (!isChatMode) showThinking("notes");
@@ -689,6 +759,7 @@
           break;
 
         case "sources":
+          logDebug("Ask stream sources", { count: (data || []).length });
           if (!isChatMode) {
             renderSources(data);
           }
@@ -714,6 +785,15 @@
           break;
 
         case "notes_done":
+          logDebug("Ask stream notes_done", { coverage: data.coverage, answerLen: (data.answer || "").length });
+          if (data.answer) {
+            rawNotes = data.answer;
+            if (isChatMode) {
+              updateStreamingBubble(rawNotes);
+            } else {
+              $("notes").innerHTML = renderMarkdown(rawNotes);
+            }
+          }
           if (!isChatMode) {
             $("notes").classList.remove("streaming-cursor");
             if (data.coverage) {
@@ -724,12 +804,24 @@
           break;
 
         case "extra_done":
+          logDebug("Ask stream extra_done", { answerLen: (data.answer || "").length });
+          if (data.answer) {
+            rawExtra = data.answer;
+            if (!isChatMode) {
+              $("extra").innerHTML = renderMarkdown(rawExtra);
+            }
+          }
           if (!isChatMode) {
             $("extra").classList.remove("streaming-cursor");
           }
           break;
 
+        case "error":
+          logDebug("Ask stream error", data);
+          throw new Error((data && data.message ? data.message : "Stream error") + (data && data.request_id ? " [request_id=" + data.request_id + "]" : ""));
+
         case "done":
+          logDebug("Ask stream done", data);
           break;
       }
     }
