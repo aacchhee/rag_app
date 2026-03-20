@@ -32,6 +32,13 @@ location = /rag/ask {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 }
 
+location = /rag/chat-models {
+    proxy_pass http://unix:/run/rag/rag.sock:/chat-models;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
 location = /rag2/ask-stream {
     proxy_pass http://unix:/run/rag2/rag2.sock:/ask-stream;
     proxy_set_header Host $host;
@@ -85,6 +92,13 @@ location ^~ /rag/ {
 
 location = /rag2/health {
     proxy_pass http://unix:/run/rag2/rag2.sock:/health;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
+location = /rag2/chat-models {
+    proxy_pass http://unix:/run/rag2/rag2.sock:/chat-models;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

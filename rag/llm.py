@@ -109,20 +109,25 @@ def _get_llm(
     max_tokens: int,
     streaming: bool = False,
     *,
+    chat_model: str | None = None,
     enable_thinking: bool | None = None,
 ) -> ChatOpenAI:
     """
     Return a cached ChatOpenAI instance.
     Streaming instances are cached separately.
     """
+    resolved_chat_model = Config.resolve_chat_model(chat_model)
     extra_body = Config.chat_extra_body(enable_thinking=enable_thinking)
-    key = f"{temperature}:{max_tokens}:{'s' if streaming else 'b'}:{_extra_body_key(extra_body)}"
+    key = (
+        f"{resolved_chat_model}:"
+        f"{temperature}:{max_tokens}:{'s' if streaming else 'b'}:{_extra_body_key(extra_body)}"
+    )
     if key not in _llm_cache:
         Config.validate()
         logger.info(
             "[req:%s] [llm] creating client model=%s streaming=%s temp=%s max_tokens=%s base_url=%s timeout=%s extra_body=%s",
             current_request_id(),
-            Config.CHAT_MODEL,
+            resolved_chat_model,
             streaming,
             temperature,
             max_tokens,
@@ -131,7 +136,7 @@ def _get_llm(
             extra_body,
         )
         _llm_cache[key] = ChatOpenAI(
-            model=Config.CHAT_MODEL,
+            model=resolved_chat_model,
             openai_api_key=Config.LLM_API_KEY,
             openai_api_base=Config.chat_base_url(),
             temperature=temperature,
@@ -148,20 +153,24 @@ def _invoke_once(
     *,
     temperature: float,
     max_tokens: int,
+    chat_model: str | None = None,
     enable_thinking: bool | None = None,
     attempt: str = "primary",
 ) -> tuple[str, dict[str, Any]]:
+    resolved_chat_model = Config.resolve_chat_model(chat_model)
     llm = _get_llm(
         temperature,
         max_tokens,
         streaming=False,
+        chat_model=resolved_chat_model,
         enable_thinking=enable_thinking,
     )
     started = time.perf_counter()
     logger.info(
-        "[req:%s] [llm] invoke start attempt=%s streaming=false temp=%s max_tokens=%s enable_thinking=%s messages=%d summary=%s",
+        "[req:%s] [llm] invoke start attempt=%s model=%s streaming=false temp=%s max_tokens=%s enable_thinking=%s messages=%d summary=%s",
         current_request_id(),
         attempt,
+        resolved_chat_model,
         temperature,
         max_tokens,
         enable_thinking,
@@ -189,6 +198,7 @@ def chat_completion(
     *,
     temperature: float | None = None,
     max_tokens: int | None = None,
+    chat_model: str | None = None,
 ) -> str:
     """
     Blocking call. Returns the full response as a string.
@@ -201,6 +211,7 @@ def chat_completion(
             messages,
             temperature=temp,
             max_tokens=tok,
+            chat_model=chat_model,
             enable_thinking=None,
             attempt="primary",
         )
@@ -217,6 +228,7 @@ def chat_completion(
                 messages,
                 temperature=temp,
                 max_tokens=tok,
+                chat_model=chat_model,
                 enable_thinking=False,
                 attempt="fallback_nonthinking",
             )
@@ -251,6 +263,7 @@ def chat_completion_stream(
     *,
     temperature: float | None = None,
     max_tokens: int | None = None,
+    chat_model: str | None = None,
 ) -> Generator[str, None, None]:
     """
     Streaming call. Yields tokens one at a time as strings.
@@ -259,15 +272,17 @@ def chat_completion_stream(
     tok = Config.CHAT_MAX_TOKENS if max_tokens is None else max_tokens
 
     try:
-        llm = _get_llm(temp, tok, streaming=True)
+        resolved_chat_model = Config.resolve_chat_model(chat_model)
+        llm = _get_llm(temp, tok, streaming=True, chat_model=resolved_chat_model)
         started = time.perf_counter()
         chunk_count = 0
         total_chars = 0
         reasoning_chars = 0
         first_token_ms = None
         logger.info(
-            "[req:%s] [llm] stream start temp=%s max_tokens=%s enable_thinking=%s messages=%d summary=%s",
+            "[req:%s] [llm] stream start model=%s temp=%s max_tokens=%s enable_thinking=%s messages=%d summary=%s",
             current_request_id(),
+            resolved_chat_model,
             temp,
             tok,
             Config.chat_enable_thinking(),
@@ -315,6 +330,7 @@ def chat_completion_stream(
                 messages,
                 temperature=temp,
                 max_tokens=tok,
+                chat_model=resolved_chat_model,
                 enable_thinking=False,
                 attempt="stream_fallback_nonthinking",
             )

@@ -16,6 +16,7 @@ Flask + Gunicorn backend for a **notes-first** RAG (Retrieval-Augmented Generati
    - JavaScript sends `POST /ask` with JSON:
      - `question` (string)
      - `extra_mode` (string)
+     - `chat_model` (optional string, must be allowed by the backend)
      - (optionally) `include_extra` (boolean, depending on UI)
 
 3. **Nginx reverse proxy**
@@ -106,10 +107,12 @@ Request JSON:
 
     {
       "question": "What is a partial derivative?",
-      "extra_mode": "auto"
+      "extra_mode": "auto",
+      "chat_model": "your-provider/model-a"
     }
 
 - `extra_mode`: `"never"` | `"auto"` | `"always"`
+- `chat_model`: optional; if omitted, the backend uses `CHAT_MODEL` as the default/fallback
 
 Response JSON (shape):
 
@@ -117,6 +120,7 @@ Response JSON (shape):
       "answer_notes": "…",
       "answer_extra": "… or null",
       "coverage": "full|partial|none",
+      "chat_model": "…",
       "sources": [
         {
           "tag": "[S1]",
@@ -132,6 +136,10 @@ Response JSON (shape):
 Returns:
 
     {"status":"ok"}
+
+### GET /chat-models
+
+Returns the backend-owned allowlist of selectable chat models, plus the default model that will be used when the client does not send `chat_model`.
 
 ---
 

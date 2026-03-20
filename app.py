@@ -42,8 +42,8 @@ def _missing_config_keys() -> list[str]:
         missing.append("EMBEDDINGS_MODEL")
     if not Config.CHAT_URL:
         missing.append("CHAT_URL")
-    if not Config.CHAT_MODEL:
-        missing.append("CHAT_MODEL")
+    if not Config.allowed_chat_models():
+        missing.append("CHAT_MODEL or ALLOWED_CHAT_MODELS")
     if not Config.QDRANT_URL:
         missing.append("QDRANT_URL")
     return missing
@@ -55,9 +55,10 @@ def _log_startup_config() -> None:
         app.logger.warning("startup config missing=%s", ",".join(missing))
     extra_body = Config.chat_extra_body()
     app.logger.info(
-        "startup config debug=%s chat_model=%s chat_base=%s embed_model=%s embed_base=%s qdrant_url=%s collection=%s timeout=%s thinking=%s retry_nonthinking=%s extra_body_keys=%s",
+        "startup config debug=%s chat_default_model=%s allowed_chat_models=%s chat_base=%s embed_model=%s embed_base=%s qdrant_url=%s collection=%s timeout=%s thinking=%s retry_nonthinking=%s extra_body_keys=%s",
         Config.DEBUG,
-        Config.CHAT_MODEL,
+        Config.default_chat_model() or "-",
+        ",".join(Config.allowed_chat_models().keys()) or "-",
         Config.chat_base_url() if Config.CHAT_URL else "",
         Config.EMBEDDINGS_MODEL,
         Config.embeddings_base_url() if Config.EMBEDDINGS_URL else "",
@@ -79,6 +80,7 @@ def _payload_summary(
     *,
     extra_mode: str | None = None,
     include_extra: bool | None = None,
+    chat_model: str | None = None,
     chat_mode: bool | None = None,
     history: list | None = None,
     top_k = None,
@@ -88,6 +90,8 @@ def _payload_summary(
         parts.append(f"include_extra={include_extra}")
     if extra_mode is not None:
         parts.append(f"extra_mode={extra_mode}")
+    if chat_model is not None:
+        parts.append(f"chat_model={chat_model}")
     if chat_mode is not None:
         parts.append(f"chat_mode={chat_mode}")
     if history is not None:
@@ -95,6 +99,23 @@ def _payload_summary(
     if top_k is not None:
         parts.append(f"top_k={top_k}")
     return " ".join(parts)
+
+
+def _resolve_request_chat_model(data: dict, *, request_id: str):
+    requested_chat_model = data.get("chat_model")
+
+    if requested_chat_model is not None and not isinstance(requested_chat_model, str):
+        return None, (
+            jsonify(error="chat_model must be a string", request_id=request_id),
+            400,
+        )
+
+    try:
+        return Config.resolve_chat_model(requested_chat_model), None
+    except ValueError as exc:
+        return None, (jsonify(error=str(exc), request_id=request_id), 400)
+    except RuntimeError as exc:
+        return None, (jsonify(error=str(exc), request_id=request_id), 500)
 
 
 _configure_logging(app)
@@ -245,6 +266,15 @@ def health():
     return jsonify(status="ok", request_id=current_request_id())
 
 
+@app.get("/chat-models")
+def chat_models():
+    return jsonify(
+        models=Config.public_chat_models(),
+        default_chat_model=Config.default_chat_model(),
+        request_id=current_request_id(),
+    )
+
+
 # Original non-streaming endpoint (kept for backwards compatibility)
 @app.post("/ask")
 def ask():
@@ -260,6 +290,10 @@ def ask():
         top_k = int(data.get("top_k", RAG.TOP_K_DEFAULT))
     except (TypeError, ValueError):
         return jsonify(error="top_k must be an integer", request_id=request_id), 400
+
+    chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
+    if error_response:
+        return error_response
 
     if not q:
         return jsonify(error="Missing 'question'", request_id=request_id), 400
@@ -277,6 +311,7 @@ def ask():
             q,
             include_extra=include_extra,
             extra_mode=extra_mode,
+            chat_model=chat_model,
             top_k=top_k,
         ),
     )
@@ -327,6 +362,7 @@ def ask():
     notes_answer_raw = chat_completion(
         [{"role": "system", "content": system_1}, {"role": "user", "content": user_1}],
         temperature=RAG.NOTES_TEMPERATURE, max_tokens=RAG.NOTES_MAX_TOKENS,
+        chat_model=chat_model,
     )
 
     notes_answer, model_coverage = sanitize_llm_answer(notes_answer_raw)
@@ -375,6 +411,7 @@ def ask():
         extra_answer_raw = chat_completion(
             [{"role": "system", "content": system_2}, {"role": "user", "content": user_2}],
             temperature=RAG.EXTRA_TEMPERATURE, max_tokens=RAG.EXTRA_MAX_TOKENS,
+            chat_model=chat_model,
         )
         extra_answer, _ = sanitize_llm_answer(extra_answer_raw)
         if extra_answer and not extra_answer.lstrip().lower().startswith("extra context (not from notes):"):
@@ -398,6 +435,7 @@ def ask():
         "answer_notes": notes_answer,
         "answer_extra": extra_answer,
         "coverage": coverage,
+        "chat_model": chat_model,
         "sources": sources,
         "request_id": request_id,
     })
@@ -420,6 +458,10 @@ def ask_stream():
         top_k = int(data.get("top_k", RAG.TOP_K_DEFAULT))
     except (TypeError, ValueError):
         return jsonify(error="top_k must be an integer", request_id=request_id), 400
+
+    chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
+    if error_response:
+        return error_response
 
     if not q:
         return jsonify(error="Missing 'question'", request_id=request_id), 400
@@ -445,6 +487,7 @@ def ask_stream():
             q,
             include_extra=include_extra,
             extra_mode=extra_mode,
+            chat_model=chat_model,
             chat_mode=chat_mode,
             history=history,
             top_k=top_k,
@@ -463,6 +506,7 @@ def ask_stream():
                 "request_id": request_id,
                 "chat_mode": chat_mode,
                 "history_turns": len(history),
+                "chat_model": chat_model,
             },
         )
         # Phase: Thinking (retrieval)
@@ -537,6 +581,7 @@ def ask_stream():
         for token in chat_completion_stream(
             [{"role": "system", "content": system_1}, {"role": "user", "content": user_1}],
             temperature=RAG.NOTES_TEMPERATURE, max_tokens=RAG.NOTES_MAX_TOKENS,
+            chat_model=chat_model,
         ):
             notes_tokens += 1
             notes_raw += token
@@ -598,6 +643,7 @@ def ask_stream():
                 for token in chat_completion_stream(
                     [{"role": "system", "content": system_2}, {"role": "user", "content": user_2}],
                     temperature=RAG.EXTRA_TEMPERATURE, max_tokens=RAG.EXTRA_MAX_TOKENS,
+                    chat_model=chat_model,
                 ):
                     extra_tokens += 1
                     extra_raw += token
@@ -628,6 +674,7 @@ def ask_stream():
             "done",
             {
                 "coverage": coverage,
+                "chat_model": chat_model,
                 "request_id": request_id,
                 "notes_len": len(notes_raw or ""),
                 "extra_len": len(extra_raw or ""),
@@ -645,6 +692,9 @@ def generate_problem():
 
     q = (data.get("question") or "").strip()
     notes_answer = (data.get("notes_answer") or "").strip()
+    chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
+    if error_response:
+        return error_response
 
     if not q:
         return jsonify(error="Missing 'question'", request_id=request_id), 400
@@ -654,10 +704,16 @@ def generate_problem():
     hits = retriever.search(q_emb, top_k=RAG.TOP_K_DEFAULT, log_hits=True)
     sources, source_blocks = render_sources(hits)
 
-    app.logger.info("[req:%s] /problem q=%r hits=%d", request_id, q[:120], len(hits))
+    app.logger.info(
+        "[req:%s] /problem q=%r hits=%d chat_model=%s",
+        request_id,
+        q[:120],
+        len(hits),
+        chat_model,
+    )
 
     def generate():
-        yield _sse("meta", {"request_id": request_id})
+        yield _sse("meta", {"request_id": request_id, "chat_model": chat_model})
         yield _sse("status", {"phase": "thinking"})
 
         system_p = (
@@ -692,12 +748,13 @@ def generate_problem():
         for token in chat_completion_stream(
             [{"role": "system", "content": system_p}, {"role": "user", "content": user_p}],
             temperature=0.5, max_tokens=800,
+            chat_model=chat_model,
         ):
             raw += token
             yield _sse("token", {"content": token})
 
         app.logger.info("[req:%s] /problem complete raw_len=%d", request_id, len(raw))
-        yield _sse("done", {"request_id": request_id, "ok": True})
+        yield _sse("done", {"request_id": request_id, "chat_model": chat_model, "ok": True})
 
     return _stream_response(generate())
 
@@ -710,6 +767,9 @@ def assess_answer():
 
     problem = (data.get("problem") or "").strip()
     student_answer = (data.get("student_answer") or "").strip()
+    chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
+    if error_response:
+        return error_response
 
     if not problem:
         return jsonify(error="Missing 'problem'", request_id=request_id), 400
@@ -717,14 +777,15 @@ def assess_answer():
         return jsonify(error="Missing 'student_answer'", request_id=request_id), 400
 
     app.logger.info(
-        "[req:%s] /assess problem_len=%d answer_len=%d",
+        "[req:%s] /assess problem_len=%d answer_len=%d chat_model=%s",
         request_id,
         len(problem),
         len(student_answer),
+        chat_model,
     )
 
     def generate():
-        yield _sse("meta", {"request_id": request_id})
+        yield _sse("meta", {"request_id": request_id, "chat_model": chat_model})
         yield _sse("status", {"phase": "assessing"})
 
         system_a = (
@@ -751,11 +812,12 @@ def assess_answer():
         for token in chat_completion_stream(
             [{"role": "system", "content": system_a}, {"role": "user", "content": user_a}],
             temperature=0.3, max_tokens=600,
+            chat_model=chat_model,
         ):
             raw += token
             yield _sse("token", {"content": token})
 
         app.logger.info("[req:%s] /assess complete raw_len=%d", request_id, len(raw))
-        yield _sse("done", {"request_id": request_id, "ok": True})
+        yield _sse("done", {"request_id": request_id, "chat_model": chat_model, "ok": True})
 
     return _stream_response(generate())

@@ -65,6 +65,13 @@
           </select>
         </label>
 
+        <label class="muted" style="display:flex; align-items:center; gap:8px;" id="chatModelLabel">
+          Model:
+          <select id="chatModel" style="max-width:280px;" disabled>
+            <option value="">Loading...</option>
+          </select>
+        </label>
+
         <label class="mode-toggle">
           <input type="checkbox" id="chatMode"> Chat mode
         </label>
@@ -417,6 +424,122 @@
       bubble.style.display = "flex";
     }
 
+    function setChatModelUnavailable(message) {
+      var select = $("chatModel");
+      var option = document.createElement("option");
+      option.value = "";
+      option.textContent = message || "Default";
+      select.innerHTML = "";
+      select.appendChild(option);
+      select.disabled = true;
+      select.title = message || "";
+    }
+
+    function chatModelSelectHasValue(select, value) {
+      if (!select || !value) return false;
+      for (var i = 0; i < select.options.length; i++) {
+        if (select.options[i].value === value) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function syncChatModelTitle() {
+      var select = $("chatModel");
+      if (!select) return;
+      var option = select.options[select.selectedIndex];
+      select.title = option ? option.textContent : "";
+    }
+
+    function populateChatModels(models, defaultModel) {
+      var select = $("chatModel");
+      var previousValue = (select.value || "").trim();
+      var list = Array.isArray(models) ? models : [];
+
+      select.innerHTML = "";
+
+      for (var i = 0; i < list.length; i++) {
+        var model = list[i] || {};
+        var modelId = String(model.id || "").trim();
+        if (!modelId) continue;
+
+        var label = String(model.label || modelId);
+        if (model.default || modelId === defaultModel) {
+          label += " (default)";
+        }
+
+        var option = document.createElement("option");
+        option.value = modelId;
+        option.textContent = label;
+        if (model.description) {
+          option.title = String(model.description);
+        }
+        select.appendChild(option);
+      }
+
+      if (!select.options.length) {
+        setChatModelUnavailable("No models available");
+        return;
+      }
+
+      var targetValue = previousValue;
+      if (!targetValue || !chatModelSelectHasValue(select, targetValue)) {
+        targetValue = String(defaultModel || "");
+      }
+      if (!targetValue || !chatModelSelectHasValue(select, targetValue)) {
+        targetValue = select.options[0].value;
+      }
+
+      select.disabled = false;
+      select.value = targetValue;
+      syncChatModelTitle();
+    }
+
+    function getSelectedChatModel() {
+      var select = $("chatModel");
+      if (!select || select.disabled) return "";
+      return String(select.value || "").trim();
+    }
+
+    function applySelectedChatModel(payload) {
+      var selectedChatModel = getSelectedChatModel();
+      if (selectedChatModel) {
+        payload.chat_model = selectedChatModel;
+      }
+      return payload;
+    }
+
+    async function loadChatModels() {
+      setChatModelUnavailable("Loading...");
+
+      try {
+        logDebug("Chat models request start");
+        var response = await fetch("/rag2/chat-models");
+        if (!response.ok) {
+          var errText = await response.text();
+          throw new Error("HTTP " + response.status + "\n" + errText);
+        }
+
+        logDebug("Chat models response", responseDebugInfo(response));
+        var data = await response.json();
+        var models = data && Array.isArray(data.models) ? data.models : [];
+        var defaultModel = data && typeof data.default_chat_model === "string"
+          ? data.default_chat_model
+          : "";
+
+        populateChatModels(models, defaultModel);
+        logDebug("Chat models loaded", {
+          count: models.length,
+          defaultModel: defaultModel,
+          selectedModel: getSelectedChatModel()
+        });
+      } catch (e) {
+        logDebug("Chat models request failed", { error: String(e) });
+        setChatModelUnavailable("Default only");
+      }
+    }
+
     function updateStreamingBubble(rawText) {
       var target = document.getElementById("chatStreamTarget");
       if (target) {
@@ -497,14 +620,18 @@
       setStatus("Generating problem…");
 
       try {
-        logDebug("Problem request start", { questionLen: (lastSingleQuestion || "").length, notesLen: (lastNotesAnswer || "").length });
+        logDebug("Problem request start", {
+          questionLen: (lastSingleQuestion || "").length,
+          notesLen: (lastNotesAnswer || "").length,
+          chatModel: getSelectedChatModel() || "(default)"
+        });
         var response = await fetch("/rag2/problem", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+          body: JSON.stringify(applySelectedChatModel({
             question: lastSingleQuestion,
             notes_answer: lastNotesAnswer
-          })
+          }))
         });
 
         if (!response.ok) {
@@ -580,14 +707,18 @@
       var assessRaw = "";
 
       try {
-        logDebug("Assess request start", { problemLen: (currentProblemRaw || "").length, answerLen: studentAnswer.length });
+        logDebug("Assess request start", {
+          problemLen: (currentProblemRaw || "").length,
+          answerLen: studentAnswer.length,
+          chatModel: getSelectedChatModel() || "(default)"
+        });
         var response = await fetch("/rag2/assess", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+          body: JSON.stringify(applySelectedChatModel({
             problem: currentProblemRaw,
             student_answer: studentAnswer
-          })
+          }))
         });
 
         if (!response.ok) {
@@ -661,12 +792,12 @@
         return;
       }
 
-      var payload = {
+      var payload = applySelectedChatModel({
         question: question,
         extra_mode: $("extraMode").value,
         chat_mode: isChatMode,
         history: isChatMode ? chatHistory : []
-      };
+      });
 
       $("askBtn").disabled = true;
 
@@ -694,7 +825,8 @@
           questionLen: question.length,
           chatMode: isChatMode,
           historyTurns: payload.history.length,
-          extraMode: payload.extra_mode
+          extraMode: payload.extra_mode,
+          chatModel: payload.chat_model || "(default)"
         });
         var response = await fetch("/rag2/ask-stream", {
           method: "POST",
@@ -849,9 +981,15 @@
 
     function boot() {
       setStatus("UI ready");
+      loadChatModels();
       $("askBtn").addEventListener("click", ask);
       $("q").addEventListener("keydown", function (e) {
         if ((e.ctrlKey || e.metaKey) && e.key === "Enter") ask();
+      });
+
+      $("chatModel").addEventListener("change", function () {
+        syncChatModelTitle();
+        logDebug("Chat model changed", { chatModel: getSelectedChatModel() || "(default)" });
       });
 
       // Mode toggle
