@@ -74,6 +74,11 @@
 
       <!-- Single question view -->
       <div id="singleView" class="section">
+        <div id="singlePromptBubble" class="chat-bubble user single-question-bubble" style="display:none;">
+          <div class="chat-bubble-label">You</div>
+          <div id="singlePromptContent" class="chat-bubble-content"></div>
+        </div>
+
         <h2>From the notes <span id="cov" class="pill" style="display:none;"></span></h2>
         <div id="notes" class="answer"></div>
 
@@ -323,7 +328,7 @@
     var rawNotes = "";
     var rawExtra = "";
     var mathRenderTimer = null;
-    var lastQuestion = "";       // last question asked (for problem generation)
+    var lastSingleQuestion = ""; // last single-mode question shown above the answer
     var lastNotesAnswer = "";    // last notes answer (for problem context)
     var currentProblemRaw = "";  // raw problem text from LLM
 
@@ -396,6 +401,20 @@
       scroll.appendChild(assistantBubble);
 
       scroll.scrollTop = scroll.scrollHeight;
+    }
+
+    function renderSinglePrompt(question) {
+      var bubble = $("singlePromptBubble");
+      var content = $("singlePromptContent");
+
+      if (!question) {
+        content.textContent = "";
+        bubble.style.display = "none";
+        return;
+      }
+
+      content.textContent = question;
+      bubble.style.display = "flex";
     }
 
     function updateStreamingBubble(rawText) {
@@ -478,12 +497,12 @@
       setStatus("Generating problem…");
 
       try {
-        logDebug("Problem request start", { questionLen: (lastQuestion || "").length, notesLen: (lastNotesAnswer || "").length });
+        logDebug("Problem request start", { questionLen: (lastSingleQuestion || "").length, notesLen: (lastNotesAnswer || "").length });
         var response = await fetch("/rag2/problem", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            question: lastQuestion,
+            question: lastSingleQuestion,
             notes_answer: lastNotesAnswer
           })
         });
@@ -650,6 +669,12 @@
       };
 
       $("askBtn").disabled = true;
+
+      if (!isChatMode) {
+        lastSingleQuestion = question;
+        renderSinglePrompt(question);
+      }
+
       $("q").value = "";
 
       if (isChatMode) {
@@ -664,10 +689,6 @@
         showThinking("notes");
         setStatus("Thinking…");
       }
-
-      // Store question for problem generation
-      lastQuestion = question;
-
       try {
         logDebug("Ask request start", {
           questionLen: question.length,

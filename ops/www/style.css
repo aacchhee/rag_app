@@ -357,6 +357,10 @@ code {
   flex-direction: column;
 }
 
+.single-question-bubble {
+  margin-bottom: 16px;
+}
+
 .chat-bubble.user {
   align-items: flex-end;
 }
