@@ -19,8 +19,9 @@ body {
 }
 
 h1 {
-  font-size: 20px;
+  font-size: 26px;
   margin: 0 0 10px;
+  line-height: 1.2;
 }
 
 .muted {
@@ -504,9 +505,15 @@ code {
 }
 
 .box-title {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 650;
-  margin: 14px 0 8px;
+  margin: 0 0 8px;
+  line-height: 1.3;
+}
+
+details > summary.box-title {
+  cursor: pointer;
+  margin-bottom: 0;
 }
 
 .problem-box {
