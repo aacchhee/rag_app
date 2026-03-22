@@ -107,10 +107,12 @@
               placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
             <div class="row">
               <button id="submitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
+              <button id="showAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
               <button id="newProblemBtn" class="new-problem-btn" type="button">New problem</button>
             </div>
           </div>
 
+          <div id="generatedAnswerBox" class="generated-answer-box"></div>
           <div id="assessmentBox" class="assessment-box"></div>
         </div>
       </div>
@@ -338,8 +340,42 @@
     var lastSingleQuestion = ""; // last single-mode question shown above the answer
     var lastNotesAnswer = "";    // last notes answer (for problem context)
     var currentProblemRaw = "";  // raw problem text from LLM
+    var currentGeneratedAnswerRaw = ""; // hidden answer key for assessment
 
     var MAX_TURNS = 20;
+
+    function resetGeneratedAnswerUI() {
+      $("generatedAnswerBox").classList.remove("visible");
+      $("generatedAnswerBox").innerHTML = "";
+      $("showAnswerBtn").textContent = "Show answer";
+      $("showAnswerBtn").disabled = true;
+    }
+
+    function toggleGeneratedAnswer() {
+      setError("");
+
+      if (!currentGeneratedAnswerRaw.trim()) {
+        setError("The generated answer is not ready yet. Please wait a moment.");
+        return;
+      }
+
+      var box = $("generatedAnswerBox");
+      var button = $("showAnswerBtn");
+
+      if (box.classList.contains("visible")) {
+        box.classList.remove("visible");
+        box.innerHTML = "";
+        button.textContent = "Show answer";
+        return;
+      }
+
+      box.innerHTML = renderMarkdown(currentGeneratedAnswerRaw);
+      box.classList.add("visible");
+      button.textContent = "Hide answer";
+
+      clearTimeout(mathRenderTimer);
+      mathRenderTimer = setTimeout(function () { typesetMath(); }, 0);
+    }
 
     // Chat rendering
     function renderChatConversation() {
@@ -606,6 +642,8 @@
     async function generateProblem() {
       setError("");
       currentProblemRaw = "";
+      currentGeneratedAnswerRaw = "";
+      resetGeneratedAnswerUI();
 
       // Reset problem UI
       $("problemSection").style.display = "block";
@@ -617,6 +655,8 @@
       showThinking("problemContent");
 
       $("problemBtn").disabled = true;
+      $("newProblemBtn").disabled = true;
+      $("submitAnswerBtn").disabled = true;
       setStatus("Generating problem…");
 
       try {
@@ -660,6 +700,14 @@
             mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
             return;
           }
+          if (event === "problem_done") {
+            logDebug("Problem stream problem_done", { problemLen: (data.problem || "").length });
+            if (data.problem) {
+              currentProblemRaw = data.problem;
+              $("problemContent").innerHTML = renderMarkdown(currentProblemRaw);
+            }
+            return;
+          }
           if (event === "error") {
             logDebug("Problem stream error", data);
             throw new Error((data && data.message ? data.message : "Problem stream error") + (data && data.request_id ? " [request_id=" + data.request_id + "]" : ""));
@@ -672,12 +720,16 @@
         // Final render
         $("problemContent").classList.remove("streaming-cursor");
         $("problemContent").innerHTML = renderMarkdown(currentProblemRaw);
+        if (!currentProblemRaw.trim()) {
+          throw new Error("Problem generation returned empty output.");
+        }
 
         // Show answer input
         $("answerInputArea").classList.add("visible");
 
         await typesetMath();
-        setStatus("Problem ready — try solving it!");
+        setStatus("Problem ready. Preparing answer key...");
+        await calculateProblemAnswer();
 
       } catch (e) {
         logDebug("Problem request failed", { error: String(e) });
@@ -685,6 +737,79 @@
         setStatus("Error");
       } finally {
         $("problemBtn").disabled = false;
+        $("newProblemBtn").disabled = false;
+      }
+    }
+
+    async function calculateProblemAnswer() {
+      currentGeneratedAnswerRaw = "";
+
+      try {
+        logDebug("Calculate answer request start", {
+          problemLen: (currentProblemRaw || "").length,
+          topicLen: (lastSingleQuestion || "").length,
+          notesLen: (lastNotesAnswer || "").length,
+          chatModel: getSelectedChatModel() || "(default)"
+        });
+        var response = await fetch("/rag2/calculate-answer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(applySelectedChatModel({
+            problem: currentProblemRaw,
+            topic_question: lastSingleQuestion,
+            notes_answer: lastNotesAnswer
+          }))
+        });
+
+        if (!response.ok) {
+          var errText = await response.text();
+          throw new Error("HTTP " + response.status + "\n" + errText);
+        }
+        logDebug("Calculate answer response", responseDebugInfo(response));
+
+        await readEventStream(response, function (event, data) {
+          if (event === "meta") {
+            logDebug("Calculate answer stream meta", data);
+            return;
+          }
+          if (event === "status") {
+            logDebug("Calculate answer stream status", data);
+            if (data.phase === "thinking" || data.phase === "solving") {
+              setStatus("Preparing answer key...");
+            }
+            return;
+          }
+          if (event === "token") {
+            currentGeneratedAnswerRaw += data.content || "";
+            return;
+          }
+          if (event === "solution_done") {
+            logDebug("Calculate answer stream solution_done", { answerLen: (data.answer || "").length });
+            if (data.answer) {
+              currentGeneratedAnswerRaw = data.answer;
+            }
+            return;
+          }
+          if (event === "error") {
+            logDebug("Calculate answer stream error", data);
+            throw new Error((data && data.message ? data.message : "Answer stream error") + (data && data.request_id ? " [request_id=" + data.request_id + "]" : ""));
+          }
+          if (event === "done") {
+            logDebug("Calculate answer stream done", data);
+          }
+        });
+
+        if (!currentGeneratedAnswerRaw.trim()) {
+          throw new Error("Generated answer was empty.");
+        }
+
+        $("submitAnswerBtn").disabled = false;
+        $("showAnswerBtn").disabled = false;
+        setStatus("Problem ready - try solving it!");
+
+      } catch (e) {
+        logDebug("Calculate answer request failed", { error: String(e) });
+        throw e;
       }
     }
 
@@ -697,18 +822,23 @@
         setError("Please enter your answer.");
         return;
       }
+      if (!currentGeneratedAnswerRaw.trim()) {
+        setError("The generated answer is not ready yet. Please wait a moment.");
+        return;
+      }
 
       $("assessmentBox").classList.add("visible");
       showThinking("assessmentBox");
 
       $("submitAnswerBtn").disabled = true;
-      setStatus("Checking your answer…");
+      setStatus("Checking your answer...");
 
       var assessRaw = "";
 
       try {
         logDebug("Assess request start", {
           problemLen: (currentProblemRaw || "").length,
+          generatedLen: (currentGeneratedAnswerRaw || "").length,
           answerLen: studentAnswer.length,
           chatModel: getSelectedChatModel() || "(default)"
         });
@@ -717,6 +847,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(applySelectedChatModel({
             problem: currentProblemRaw,
+            generated_answer: currentGeneratedAnswerRaw,
             student_answer: studentAnswer
           }))
         });
@@ -774,11 +905,16 @@
       setError("");
       rawNotes = "";
       rawExtra = "";
+      currentProblemRaw = "";
+      currentGeneratedAnswerRaw = "";
+      resetGeneratedAnswerUI();
 
       // Hide problem section when asking new question
       $("problemSection").style.display = "none";
       $("problemSection").classList.remove("visible");
       $("problemBtn").style.display = "none";
+      $("submitAnswerBtn").disabled = false;
+      $("newProblemBtn").disabled = false;
 
       var question = $("q").value.trim();
       if (!question) {
@@ -981,6 +1117,7 @@
 
     function boot() {
       setStatus("UI ready");
+      resetGeneratedAnswerUI();
       loadChatModels();
       $("askBtn").addEventListener("click", ask);
       $("q").addEventListener("keydown", function (e) {
@@ -1010,6 +1147,9 @@
 
       // New problem button
       $("newProblemBtn").addEventListener("click", generateProblem);
+
+      // Reveal generated answer
+      $("showAnswerBtn").addEventListener("click", toggleGeneratedAnswer);
 
       // Submit answer for assessment
       $("submitAnswerBtn").addEventListener("click", submitAnswer);

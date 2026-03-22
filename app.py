@@ -8,7 +8,7 @@ from flask import Flask, request, jsonify, Response, stream_with_context, g
 from werkzeug.exceptions import HTTPException
 
 from config import Config
-from cleanup import sanitize_llm_answer
+from cleanup import sanitize_llm_answer, sanitize_llm_text
 from ingest.embed import embed_query
 from log_utils import current_request_id, preview_text
 from rag.retriever import Retriever
@@ -185,6 +185,42 @@ def detect_coverage(hits) -> str:
     if len(best) < RAG.MIN_BEST_CHUNK_CHARS_FOR_FULL:
         return "partial"
     return "full"
+
+
+_PROBLEM_PREFIX_RE = re.compile(r"^\s*\*\*Problem:?\*\*\s*", re.IGNORECASE)
+_PLAIN_PROBLEM_PREFIX_RE = re.compile(r"^\s*Problem:?\s*", re.IGNORECASE)
+_PROBLEM_TRAILING_SECTION_RE = re.compile(
+    r"(?im)^\s*(?:answer|solution|final answer)\s*:"
+)
+
+
+def _normalize_problem_text(raw: str) -> str:
+    text = sanitize_llm_text(raw)
+    if not text:
+        return ""
+
+    text = _PROBLEM_TRAILING_SECTION_RE.split(text, maxsplit=1)[0].strip()
+    text = _PROBLEM_PREFIX_RE.sub("", text, count=1)
+    text = _PLAIN_PROBLEM_PREFIX_RE.sub("", text, count=1)
+
+    if not text:
+        return ""
+
+    return "**Problem:**\n" + text.strip()
+
+
+def _problem_body(problem: str) -> str:
+    text = _normalize_problem_text(problem)
+    text = _PROBLEM_PREFIX_RE.sub("", text, count=1)
+    return text.strip()
+
+
+def _extract_embedded_answer(problem: str) -> str:
+    text = sanitize_llm_text(problem)
+    parts = _PROBLEM_TRAILING_SECTION_RE.split(text, maxsplit=1)
+    if len(parts) < 2:
+        return ""
+    return sanitize_llm_text(parts[1]).strip()
 
 
 def render_sources(hits):
@@ -723,13 +759,12 @@ def generate_problem():
             "- The problem must be solvable using the material in the sources\n"
             "- Include a clear, specific task (e.g. 'Compute...', 'Find...', 'Show that...')\n"
             "- The problem should have a concrete numerical or symbolic answer\n"
+            "- Do not include any solution, hints, answer key, or final answer\n"
             "- Use LaTeX for all math formulas\n"
-            "- After the problem, on a separate line write ANSWER: followed by the correct answer\n"
-            "- Keep the answer concise (a number, expression, or short derivation)\n\n"
+            "- Keep the problem self-contained\n\n"
             "Output format:\n"
             "**Problem:**\n"
-            "(problem statement)\n\n"
-            "ANSWER: (correct answer)\n"
+            "(problem statement)\n"
         )
 
         user_p = (
@@ -753,8 +788,111 @@ def generate_problem():
             raw += token
             yield _sse("token", {"content": token})
 
-        app.logger.info("[req:%s] /problem complete raw_len=%d", request_id, len(raw))
+        problem_text = _normalize_problem_text(raw)
+        app.logger.info(
+            "[req:%s] /problem complete raw_len=%d clean_len=%d",
+            request_id,
+            len(raw),
+            len(problem_text),
+        )
+        yield _sse("problem_done", {"problem": problem_text})
         yield _sse("done", {"request_id": request_id, "chat_model": chat_model, "ok": True})
+
+    return _stream_response(generate())
+
+
+# Generated answer endpoint
+@app.post("/calculate-answer")
+def calculate_answer():
+    data = request.get_json(force=True) or {}
+    request_id = current_request_id()
+
+    problem = (data.get("problem") or "").strip()
+    topic_question = (data.get("topic_question") or data.get("question") or "").strip()
+    notes_answer = (data.get("notes_answer") or "").strip()
+    chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
+    if error_response:
+        return error_response
+
+    if not problem:
+        return jsonify(error="Missing 'problem'", request_id=request_id), 400
+
+    problem_text = _problem_body(problem)
+    if not problem_text:
+        return jsonify(error="Problem is empty after normalization", request_id=request_id), 400
+    retrieval_query = problem_text
+    if topic_question:
+        retrieval_query = topic_question + "\n\n" + problem_text
+
+    q_emb = embed_query(retrieval_query)
+    hits = retriever.search(q_emb, top_k=RAG.TOP_K_DEFAULT, log_hits=True)
+    _, source_blocks = render_sources(hits)
+
+    app.logger.info(
+        "[req:%s] /calculate-answer problem_len=%d topic_len=%d hits=%d chat_model=%s",
+        request_id,
+        len(problem_text),
+        len(topic_question),
+        len(hits),
+        chat_model,
+    )
+
+    def generate():
+        yield _sse("meta", {"request_id": request_id, "chat_model": chat_model})
+        yield _sse("status", {"phase": "thinking"})
+
+        system_s = (
+            "You are a course assistant that solves math practice problems.\n"
+            "Use the SOURCES when they are relevant and rely on standard mathematical reasoning.\n"
+            "Solve the exact problem you are given.\n\n"
+            "RULES:\n"
+            "- Do not change the problem or introduce a different task\n"
+            "- Show the key steps clearly and concisely\n"
+            "- Use LaTeX for all math formulas\n"
+            "- End with a line exactly in this format:\n"
+            "FINAL ANSWER: (final answer)\n"
+        )
+
+        user_s = (
+            "SOURCES:\n" + "\n".join(source_blocks)
+            + "\n\nGENERATED PRACTICE PROBLEM:\n" + problem_text
+        )
+
+        if topic_question:
+            user_s += "\n\nOriginal student topic request:\n" + topic_question
+        if notes_answer:
+            user_s += "\n\nContext from the earlier notes-based answer:\n" + notes_answer
+
+        user_s += "\n\nSolve the generated practice problem."
+
+        yield _sse("status", {"phase": "solving"})
+
+        raw = ""
+        for token in chat_completion_stream(
+            [{"role": "system", "content": system_s}, {"role": "user", "content": user_s}],
+            temperature=0.3, max_tokens=900,
+            chat_model=chat_model,
+        ):
+            raw += token
+            yield _sse("token", {"content": token})
+
+        solution_text = sanitize_llm_text(raw)
+        app.logger.info(
+            "[req:%s] /calculate-answer complete raw_len=%d clean_len=%d",
+            request_id,
+            len(raw),
+            len(solution_text),
+        )
+        yield _sse("solution_done", {"answer": solution_text})
+        yield _sse(
+            "done",
+            {
+                "request_id": request_id,
+                "chat_model": chat_model,
+                "answer_len": len(solution_text),
+                "ok": True,
+            },
+        )
 
     return _stream_response(generate())
 
@@ -766,20 +904,28 @@ def assess_answer():
     request_id = current_request_id()
 
     problem = (data.get("problem") or "").strip()
+    generated_answer = (data.get("generated_answer") or "").strip()
     student_answer = (data.get("student_answer") or "").strip()
     chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
     if error_response:
         return error_response
 
+    if not generated_answer:
+        generated_answer = _extract_embedded_answer(problem)
+        problem = _normalize_problem_text(problem)
+
     if not problem:
         return jsonify(error="Missing 'problem'", request_id=request_id), 400
+    if not generated_answer:
+        return jsonify(error="Missing 'generated_answer'", request_id=request_id), 400
     if not student_answer:
         return jsonify(error="Missing 'student_answer'", request_id=request_id), 400
 
     app.logger.info(
-        "[req:%s] /assess problem_len=%d answer_len=%d chat_model=%s",
+        "[req:%s] /assess problem_len=%d generated_len=%d answer_len=%d chat_model=%s",
         request_id,
         len(problem),
+        len(generated_answer),
         len(student_answer),
         chat_model,
     )
@@ -791,19 +937,22 @@ def assess_answer():
         system_a = (
             "You are a course assistant that assesses student answers to math problems.\n\n"
             "RULES:\n"
-            "- Compare the student's answer to the correct answer in the problem\n"
+            "- Compare the student's answer to the official generated solution\n"
+            "- Accept mathematically equivalent answers even if the wording or steps differ\n"
+            "- If the student gives only the final answer, judge whether that final answer is correct\n"
             "- Be encouraging but honest\n"
             "- If wrong, explain where the mistake is and give a hint\n"
             "- If partially correct, acknowledge what's right and point out what's missing\n"
             "- If correct, confirm and optionally add a brief insight\n"
             "- Use LaTeX for math formulas\n\n"
             "Output format:\n"
-            "**Result:** ✅ Correct / ⚠️ Partially correct / ❌ Incorrect\n\n"
+            "**Result:** Correct / Partially correct / Incorrect\n\n"
             "(explanation)\n"
         )
 
         user_a = (
-            "PROBLEM AND CORRECT ANSWER:\n" + problem
+            "PROBLEM:\n" + problem
+            + "\n\nOFFICIAL GENERATED SOLUTION:\n" + generated_answer
             + "\n\nSTUDENT'S ANSWER:\n" + student_answer
             + "\n\nAssess the student's answer."
         )

@@ -571,6 +571,48 @@ code {
   cursor: not-allowed;
 }
 
+.show-answer-btn {
+  background: #8a5a00;
+  font-size: 13px;
+  padding: 8px 12px;
+  margin-top: 8px;
+}
+
+.show-answer-btn:hover {
+  background: #704800;
+}
+
+.show-answer-btn:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.generated-answer-box {
+  margin-top: 12px;
+  border: 1px solid #f0d29a;
+  border-radius: 12px;
+  padding: 14px;
+  background: #fff8e8;
+  display: none;
+}
+
+.generated-answer-box.visible {
+  display: block;
+}
+
+.generated-answer-box p {
+  margin: 0 0 10px;
+  line-height: 1.6;
+}
+
+.generated-answer-box p:last-child {
+  margin-bottom: 0;
+}
+
+.generated-answer-box strong {
+  font-weight: 650;
+}
+
 .assessment-box {
   margin-top: 12px;
   border: 1px solid #e0e0e0;
