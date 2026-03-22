@@ -61,6 +61,11 @@ button {
   border-radius: 10px;
   font-weight: 650;
   cursor: pointer;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
 }
 
 button:disabled {
@@ -481,7 +486,7 @@ code {
 .problem-btn {
   background: #2d5a27;
   font-size: 13px;
-  padding: 8px 12px;
+  padding: 0 14px;
   display: none;
 }
 
@@ -558,8 +563,8 @@ code {
 .submit-answer-btn {
   background: #0b57d0;
   font-size: 13px;
-  padding: 8px 12px;
-  margin-top: 8px;
+  padding: 0 14px;
+  margin-top: 0;
 }
 
 .submit-answer-btn:hover {
@@ -574,8 +579,8 @@ code {
 .show-answer-btn {
   background: #8a5a00;
   font-size: 13px;
-  padding: 8px 12px;
-  margin-top: 8px;
+  padding: 0 14px;
+  margin-top: 0;
 }
 
 .show-answer-btn:hover {
@@ -589,28 +594,11 @@ code {
 
 .generated-answer-box {
   margin-top: 12px;
-  border: 1px solid #f0d29a;
-  border-radius: 12px;
-  padding: 14px;
-  background: #fff8e8;
   display: none;
 }
 
 .generated-answer-box.visible {
   display: block;
-}
-
-.generated-answer-box p {
-  margin: 0 0 10px;
-  line-height: 1.6;
-}
-
-.generated-answer-box p:last-child {
-  margin-bottom: 0;
-}
-
-.generated-answer-box strong {
-  font-weight: 650;
 }
 
 .assessment-box {
@@ -641,9 +629,9 @@ code {
 
 .new-problem-btn {
   background: #555;
-  font-size: 12px;
-  padding: 6px 10px;
-  margin-top: 8px;
+  font-size: 13px;
+  padding: 0 14px;
+  margin-top: 0;
 }
 
 .new-problem-btn:hover {
