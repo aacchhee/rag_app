@@ -503,6 +503,12 @@ code {
   display: block;
 }
 
+.box-title {
+  font-size: 14px;
+  font-weight: 650;
+  margin: 14px 0 8px;
+}
+
 .problem-box {
   border: 1px solid #d4edda;
   border-radius: 12px;
