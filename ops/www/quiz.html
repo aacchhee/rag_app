@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Quiz — RAG Assistant</title>
+
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #f7f7f8; color: #111; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+    .card { background: #fff; border-radius: 14px; box-shadow: 0 1px 6px rgba(0,0,0,.08); padding: 18px; }
+    h1 { font-size: 20px; margin: 0 0 10px; }
+    .muted { color: #666; font-size: 13px; }
+    code { background: #f1f1f1; padding: 1px 5px; border-radius: 6px; }
+
+    /* Navigation topbar */
+    .nav-topbar {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: #111;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .nav-topbar a {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 11px 20px;
+      color: #aaa;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      transition: background .15s, color .15s;
+      position: relative;
+    }
+    .nav-topbar a:hover {
+      background: #222;
+      color: #fff;
+    }
+    .nav-topbar a.active {
+      background: #272727;
+      color: #fff;
+    }
+    .nav-topbar a.active::after {
+      content: "";
+      position: absolute;
+      bottom: 0;
+      left: 16px;
+      right: 16px;
+      height: 2px;
+      background: #4a9eff;
+      border-radius: 2px;
+    }
+    .nav-topbar .nav-icon {
+      font-size: 15px;
+      line-height: 1;
+    }
+    .nav-topbar .spacer {
+      flex: 1;
+    }
+    .nav-topbar .back-link {
+      color: #6ba3e8;
+      font-weight: 500;
+      font-size: 13px;
+      padding: 11px 18px;
+    }
+    .nav-topbar .back-link:hover {
+      color: #9dc4f5;
+      background: #1a1a1a;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+
+    <!-- Navigation topbar -->
+    <nav class="nav-topbar">
+      <a href="/rag2/" title="Ask a question">
+        <span class="nav-icon">💬</span> Question
+      </a>
+      <a href="/rag2/quiz.html" class="active" title="Take a quiz">
+        <span class="nav-icon">📝</span> Quiz
+      </a>
+      <span class="spacer"></span>
+      <a class="back-link" href="/" title="Back to notes site"><- Notes</a>
+    </nav>
+
+    <div class="card">
+      <h1>Quiz Mode</h1>
+      <p class="muted">Quiz functionality coming soon. This page will let you test your knowledge based on the notes.</p>
+
+      <div style="margin-top: 24px; padding: 40px; text-align: center; border: 2px dashed #ddd; border-radius: 12px; color: #999;">
+        <span style="font-size: 48px;">📝</span>
+        <p style="margin: 12px 0 0; font-size: 15px;">Quiz content will appear here</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

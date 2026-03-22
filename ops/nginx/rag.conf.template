@@ -32,6 +32,52 @@ location = /rag/ask {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 }
 
+location = /rag/chat-models {
+    proxy_pass http://unix:/run/rag/rag.sock:/chat-models;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
+location = /rag2/ask-stream {
+    proxy_pass http://unix:/run/rag2/rag2.sock:/ask-stream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 120s;
+}
+
+location = /rag2/problem {
+    proxy_pass http://unix:/run/rag2/rag2.sock:/problem;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 120s;
+}
+
+location = /rag2/calculate-answer {
+    proxy_pass http://unix:/run/rag2/rag2.sock:/calculate-answer;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 120s;
+}
+
+location = /rag2/assess {
+    proxy_pass http://unix:/run/rag2/rag2.sock:/assess;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 120s;
+}
 
 # --- RAG UI (static) ---
 location ^~ /rag/ {
@@ -46,6 +92,13 @@ location ^~ /rag/ {
 
 location = /rag2/health {
     proxy_pass http://unix:/run/rag2/rag2.sock:/health;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
+location = /rag2/chat-models {
+    proxy_pass http://unix:/run/rag2/rag2.sock:/chat-models;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
