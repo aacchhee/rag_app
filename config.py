@@ -3,35 +3,24 @@ import json
 import os
 
 
+import models_client
+
+
 class Config:
     # --- Chat ---
     CHAT_URL = os.getenv("CHAT_URL")
     CHAT_MODEL = os.getenv("CHAT_MODEL")
-    ALLOWED_CHAT_MODELS: dict[str, dict[str, str]] = {
-        "mistralai/Mistral-Large-3-675B-Instruct-2512-NVFP4": {
-            "label": "Mistral Large 3",
-        },
-        "openai/gpt-oss-120b": {
-            "label": "GPT-OSS 120B",
-        },
-        "zai-org/GLM-4.7-FP8": {
-            "label": "GLM 4.7",
-        },
-        "moonshotai/Kimi-K2.5": {
-            "label": "Kimi K2.5",
-        },
-        "Qwen/Qwen3.5-122B-A10B-FP8": {
-            "label": "Qwen 3.5 122B",
-        },
-        "NorwAI/NorwAI-Magistral-24B-reasoning": {
-            "label": "NorwAI Magistral 24B",
-        },
-    }
     CHAT_TEMPERATURE = float(os.getenv("CHAT_TEMPERATURE", "0.2"))
     CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "900"))
     CHAT_ENABLE_THINKING = os.getenv("CHAT_ENABLE_THINKING")
     CHAT_RETRY_WITH_THINKING_DISABLED = os.getenv("CHAT_RETRY_WITH_THINKING_DISABLED", "true")
     CHAT_EXTRA_BODY_JSON = os.getenv("CHAT_EXTRA_BODY_JSON")
+
+    # --- Legacy override for static labels ---
+    # Kept purely for optional env-based manual overrides.  Most users should rely
+    # on the dynamic fetch from the Idun API; this dict is merged *under* the live
+    # list so it only affects label/description overrides.
+    STATIC_MODEL_OVERRIDES: dict[str, dict[str, str]] = {}
 
     # --- Flask ---
     DEBUG = os.getenv("DEBUG", "false").lower() == "true"
@@ -80,26 +69,30 @@ class Config:
 
     @classmethod
     def allowed_chat_models(cls) -> dict[str, dict[str, str]]:
-        models: dict[str, dict[str, str]] = {}
+        # 1) Fetch live model list from the Idun API (cached)
+        models = models_client.fetch_available_models(
+            base_url=cls.chat_base_url(),
+            api_key=cls.LLM_API_KEY,
+            timeout=cls.LLM_TIMEOUT,
+        )
 
-        for model_id, metadata in cls.ALLOWED_CHAT_MODELS.items():
+        # 2) Merge in any static overrides so env-based labels/descriptions win
+        for model_id, metadata in cls.STATIC_MODEL_OVERRIDES.items():
             normalized_model_id = str(model_id or "").strip()
             if not normalized_model_id:
-                raise RuntimeError("ALLOWED_CHAT_MODELS contains an empty model id")
-
-            if metadata is None:
-                metadata = {}
+                raise RuntimeError("STATIC_MODEL_OVERRIDES contains an empty model id")
             if not isinstance(metadata, dict):
                 raise RuntimeError(
-                    f"ALLOWED_CHAT_MODELS[{normalized_model_id!r}] must be a dict"
+                    f"STATIC_MODEL_OVERRIDES[{normalized_model_id!r}] must be a dict"
                 )
-
-            entry = {"label": str(metadata.get("label") or normalized_model_id)}
-            description = str(metadata.get("description") or "").strip()
-            if description:
-                entry["description"] = description
+            entry = models.get(normalized_model_id, {}).copy()
+            if metadata.get("label"):
+                entry["label"] = str(metadata["label"])
+            if metadata.get("description"):
+                entry["description"] = str(metadata["description"]).strip()
             models[normalized_model_id] = entry
 
+        # 3) Ensure the fallback CHAT_MODEL is present even if the API is down
         fallback_model = (cls.CHAT_MODEL or "").strip()
         if fallback_model and fallback_model not in models:
             models[fallback_model] = {
@@ -136,7 +129,7 @@ class Config:
             return default_model
 
         raise RuntimeError(
-            "No chat model configured. Set CHAT_MODEL or add entries to ALLOWED_CHAT_MODELS."
+            "No chat model configured. Set CHAT_MODEL or ensure the LLM API is reachable."
         )
 
     @classmethod
@@ -220,7 +213,7 @@ class Config:
         if not cls.CHAT_URL:
             missing.append("CHAT_URL")
         if not cls.allowed_chat_models():
-            missing.append("CHAT_MODEL or ALLOWED_CHAT_MODELS")
+            missing.append("CHAT_MODEL (or LLM API must be reachable)")
         if not cls.QDRANT_URL:
             missing.append("QDRANT_URL")
 

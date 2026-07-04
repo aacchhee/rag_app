@@ -43,7 +43,7 @@ def _missing_config_keys() -> list[str]:
     if not Config.CHAT_URL:
         missing.append("CHAT_URL")
     if not Config.allowed_chat_models():
-        missing.append("CHAT_MODEL or ALLOWED_CHAT_MODELS")
+        missing.append("CHAT_MODEL (or the LLM API must be reachable)")
     if not Config.QDRANT_URL:
         missing.append("QDRANT_URL")
     return missing
