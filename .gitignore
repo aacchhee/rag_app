@@ -20,6 +20,10 @@ venv/
 vector_store/
 *.faiss
 
+# docker-compose local state
+data/
+notes_repo/
+
 # OS/editor
 .DS_Store
 .vscode/

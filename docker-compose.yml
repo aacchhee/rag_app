@@ -1,0 +1,55 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+
+  rag:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Overrides .env so the app talks to the qdrant service above
+      # instead of localhost, regardless of what QDRANT_URL is set to there.
+      QDRANT_URL: http://qdrant:6333
+    ports:
+      - "8000:8000"
+    volumes:
+      # Source notes for `python -m ingest.ingest` (container path is hardcoded
+      # in ingest/ingest.py as /home/rag/notes_repo). Host source is
+      # configurable via NOTES_REPO_DIR in .env, defaults to ./notes_repo.
+      - ${NOTES_REPO_DIR:-./notes_repo}:/home/rag/notes_repo:ro
+      # Optional ingest reference output (VECTOR_DB_PATH), not used at runtime.
+      - ./vector_store:/app/vector_store
+    depends_on:
+      - qdrant
+
+  frontend:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./ops/www:/usr/share/nginx/html:ro
+      - ./ops/nginx/local.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - rag
+
+  ingest:
+    build: .
+    profiles: ["ingest"]
+    env_file:
+      - .env
+    environment:
+      QDRANT_URL: http://qdrant:6333
+    command: ["python", "-m", "ingest.ingest"]
+    volumes:
+      - ${NOTES_REPO_DIR:-./notes_repo}:/home/rag/notes_repo:ro
+      - ./vector_store:/app/vector_store
+    depends_on:
+      - qdrant
