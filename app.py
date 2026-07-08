@@ -782,7 +782,7 @@ def generate_problem():
         raw = ""
         for token in chat_completion_stream(
             [{"role": "system", "content": system_p}, {"role": "user", "content": user_p}],
-            temperature=0.5, max_tokens=800,
+            temperature=0.5, max_tokens=1000,
             chat_model=chat_model,
         ):
             raw += token
@@ -870,7 +870,7 @@ def calculate_answer():
         raw = ""
         for token in chat_completion_stream(
             [{"role": "system", "content": system_s}, {"role": "user", "content": user_s}],
-            temperature=0.3, max_tokens=900,
+            temperature=0.3, max_tokens=1200,
             chat_model=chat_model,
         ):
             raw += token
@@ -960,7 +960,7 @@ def assess_answer():
         raw = ""
         for token in chat_completion_stream(
             [{"role": "system", "content": system_a}, {"role": "user", "content": user_a}],
-            temperature=0.3, max_tokens=600,
+            temperature=0.3, max_tokens=1000,
             chat_model=chat_model,
         ):
             raw += token
