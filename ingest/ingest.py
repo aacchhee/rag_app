@@ -18,9 +18,6 @@ from config import Config
 
 REPO_DIR = Path("/home/rag/notes_repo")
 
-# Must match your embedding model output
-EMBEDDING_DIM = 4096
-
 
 def collect_files() -> list[Path]:
     files: list[Path] = []
@@ -82,7 +79,11 @@ def main():
         )
         documents.append(doc)
 
-    # 3) Connect to Qdrant and recreate collection
+    # 3) Determine embedding dimension from the actual configured model
+    embeddings = get_embeddings_model()
+    embedding_dim = len(embeddings.embed_query("dimension probe"))
+
+    # 4) Connect to Qdrant and recreate collection
     client = QdrantClient(
         url=Config.QDRANT_URL,
         api_key=Config.QDRANT_API_KEY,
@@ -98,15 +99,13 @@ def main():
     client.create_collection(
         collection_name=Config.QDRANT_COLLECTION,
         vectors_config=VectorParams(
-            size=EMBEDDING_DIM,
+            size=embedding_dim,
             distance=Distance.COSINE,
         ),
     )
-    print(f"[ingest] created collection: {Config.QDRANT_COLLECTION} (dim={EMBEDDING_DIM})")
+    print(f"[ingest] created collection: {Config.QDRANT_COLLECTION} (dim={embedding_dim})")
 
-    # 4) Add documents via LangChain (handles embedding + upload)
-    embeddings = get_embeddings_model()
-
+    # 5) Add documents via LangChain (handles embedding + upload)
     vector_store = QdrantVectorStore(
         client=client,
         collection_name=Config.QDRANT_COLLECTION,
@@ -118,7 +117,7 @@ def main():
 
     vector_store.add_documents(documents, ids=ids)
 
-    # 5) Save info for reference (optional, not used at runtime)
+    # 6) Save info for reference (optional, not used at runtime)
     out_dir = Path(Config.VECTOR_DB_PATH)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -128,7 +127,7 @@ def main():
                 "repo_dir": str(REPO_DIR),
                 "files_indexed": [str(p.relative_to(REPO_DIR)) for p in files],
                 "chunks": len(all_chunks),
-                "embedding_dim": EMBEDDING_DIM,
+                "embedding_dim": embedding_dim,
                 "qdrant_collection": Config.QDRANT_COLLECTION,
                 "storage": "qdrant",
             },
@@ -137,7 +136,7 @@ def main():
             indent=2,
         )
 
-    print(f"[ingest] files: {len(files)} | chunks: {len(all_chunks)} | dim: {EMBEDDING_DIM}")
+    print(f"[ingest] files: {len(files)} | chunks: {len(all_chunks)} | dim: {embedding_dim}")
     print(f"[ingest] stored in Qdrant collection: {Config.QDRANT_COLLECTION}")
 
 
