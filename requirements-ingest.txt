@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# PDF -> Markdown conversion, used only by the ingest service (Dockerfile.ingest).
+# Pulls in torch etc., deliberately kept out of the rag runtime image's requirements.txt.
+marker-pdf==1.10.2

@@ -13,10 +13,24 @@ from qdrant_client.models import Distance, VectorParams
 
 from ingest.chunker import chunk_markdown
 from ingest.embed import get_embeddings_model
+from ingest.pdf import convert_pdf_to_markdown
 from config import Config
 
 
 REPO_DIR = Path("/home/rag/notes_repo")
+
+# Separate, writable mount for PDFs uploaded via the ingest web UI (ingest/web.py).
+# Kept outside of REPO_DIR, which is mounted read-only.
+PDF_UPLOAD_DIR = Path("/app/data/pdf_uploads")
+
+
+def _rel_source(f: Path) -> str:
+    for base, prefix in ((REPO_DIR, ""), (PDF_UPLOAD_DIR, "uploaded_pdfs/")):
+        try:
+            return prefix + str(f.relative_to(base))
+        except ValueError:
+            continue
+    return f.name
 
 
 def collect_files() -> list[Path]:
@@ -37,6 +51,13 @@ def collect_files() -> list[Path]:
     if inc.exists():
         files.extend(sorted(inc.rglob("*.md")))
 
+    # 4) PDFs anywhere in the repo (converted to markdown via `marker`)
+    files.extend(sorted(REPO_DIR.rglob("*.pdf")))
+
+    # 5) PDFs uploaded via the ingest web UI
+    if PDF_UPLOAD_DIR.exists():
+        files.extend(sorted(PDF_UPLOAD_DIR.rglob("*.pdf")))
+
     return files
 
 
@@ -52,12 +73,16 @@ def main():
     # 1) Chunk all files
     all_chunks = []
     for f in files:
-        try:
-            text = f.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            text = f.read_text(encoding="utf-8", errors="replace")
+        if f.suffix.lower() == ".pdf":
+            print(f"[ingest] converting PDF via marker: {f}")
+            text = convert_pdf_to_markdown(f)
+        else:
+            try:
+                text = f.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                text = f.read_text(encoding="utf-8", errors="replace")
 
-        rel = str(f.relative_to(REPO_DIR))
+        rel = _rel_source(f)
         chunks = chunk_markdown(text, source_path=rel)
         # Filter out tiny chunks
         chunks = [c for c in chunks if len(c["text"].strip()) >= 50]
@@ -125,7 +150,7 @@ def main():
         json.dump(
             {
                 "repo_dir": str(REPO_DIR),
-                "files_indexed": [str(p.relative_to(REPO_DIR)) for p in files],
+                "files_indexed": [_rel_source(p) for p in files],
                 "chunks": len(all_chunks),
                 "embedding_dim": embedding_dim,
                 "qdrant_collection": Config.QDRANT_COLLECTION,
