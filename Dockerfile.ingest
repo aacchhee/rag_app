@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8001
+
+# Web UI by default (trigger + status/logs at http://localhost:8001).
+# For a one-off headless run instead, override with:
+#   docker compose run --rm ingest python -m ingest.ingest
+CMD ["gunicorn", "--workers", "1", "--bind", "0.0.0.0:8001", "--access-logfile", "-", "--error-logfile", "-", "ingest.web:app"]

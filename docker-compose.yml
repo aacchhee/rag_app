@@ -41,13 +41,16 @@ services:
       - rag
 
   ingest:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.ingest
     profiles: ["ingest"]
     env_file:
       - .env
     environment:
       QDRANT_URL: http://qdrant:6333
-    command: ["python", "-m", "ingest.ingest"]
+    ports:
+      - "8001:8001"
     volumes:
       - ${NOTES_REPO_DIR:-./notes_repo}:/home/rag/notes_repo:ro
       - ./vector_store:/app/vector_store
