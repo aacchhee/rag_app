@@ -37,7 +37,7 @@ class _LogStream(io.StringIO):
         return super().write(s)
 
 
-def _run_job():
+def _run_job(force_full: bool = False):
     with _lock:
         _state.update(
             status="running",
@@ -49,7 +49,7 @@ def _run_job():
 
     try:
         with contextlib.redirect_stdout(_LogStream()):
-            run_ingest()
+            run_ingest(force_full=force_full)
         with _lock:
             _state["status"] = "done"
     except Exception:
@@ -77,8 +77,9 @@ def trigger():
     with _lock:
         if _state["status"] == "running":
             return jsonify({"error": "ingest already running"}), 409
-    threading.Thread(target=_run_job, daemon=True).start()
-    return jsonify({"started": True})
+    force_full = bool((request.get_json(silent=True) or {}).get("force_full"))
+    threading.Thread(target=_run_job, args=(force_full,), daemon=True).start()
+    return jsonify({"started": True, "force_full": force_full})
 
 
 @app.get("/pdfs")
@@ -152,7 +153,9 @@ _PAGE = """<!doctype html>
   <ul id="pdf-list"></ul>
 
   <h2>Run</h2>
-  <p>Re-indexes the notes repo into Qdrant. This deletes and rebuilds the collection.</p>
+  <p>Incremental by default: only new/changed files are re-chunked and re-embedded, unchanged
+  files (and unchanged PDFs) are skipped, removed files are cleaned up from Qdrant.</p>
+  <label><input type="checkbox" id="force-full"> Force full rebuild (deletes and re-creates the whole collection, re-processes everything)</label><br><br>
   <button id="run-btn" onclick="runIngest()">Start ingest</button>
   <div id="status" class="idle">idle</div>
   <pre id="log"></pre>
@@ -164,6 +167,7 @@ const logEl = document.getElementById('log');
 const pdfFileEl = document.getElementById('pdf-file');
 const pdfListEl = document.getElementById('pdf-list');
 const uploadMsgEl = document.getElementById('upload-msg');
+const forceFullEl = document.getElementById('force-full');
 
 async function loadPdfs() {
   const res = await fetch('/pdfs');
@@ -209,7 +213,11 @@ async function deletePdf(name) {
 loadPdfs();
 
 async function runIngest() {
-  const res = await fetch('/run', { method: 'POST' });
+  const res = await fetch('/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ force_full: forceFullEl.checked }),
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     alert(body.error || 'Failed to start ingest');

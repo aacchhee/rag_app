@@ -3,13 +3,15 @@ Ingest pipeline: collect markdown files → chunk → embed → store in Qdrant.
 """
 
 from pathlib import Path
+import hashlib
 import json
+import os
 import uuid
 
 from langchain_core.documents import Document
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
+from qdrant_client.models import Distance, PointIdsList, VectorParams
 
 from ingest.chunker import chunk_markdown
 from ingest.embed import get_embeddings_model
@@ -61,7 +63,36 @@ def collect_files() -> list[Path]:
     return files
 
 
-def main():
+def _manifest_path() -> Path:
+    return Path(Config.VECTOR_DB_PATH) / "manifest.json"
+
+
+def _load_manifest() -> dict | None:
+    path = _manifest_path()
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _save_manifest(manifest: dict) -> None:
+    path = _manifest_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+
+def _chunk_id(source: str, index: int) -> str:
+    # Stable per source path + position, independent of what else changes in
+    # the same ingest run, so unrelated files' chunks keep the same Qdrant
+    # point IDs across runs.
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{source}::{index}"))
+
+
+def main(force_full: bool = False):
     Config.validate()
 
     files = collect_files()
@@ -70,98 +101,132 @@ def main():
             f"No files found under {REPO_DIR}. Check repo layout / paths."
         )
 
-    # 1) Chunk all files
-    all_chunks = []
-    for f in files:
-        if f.suffix.lower() == ".pdf":
-            print(f"[ingest] converting PDF via marker: {f}")
-            text = convert_pdf_to_markdown(f)
-        else:
-            try:
-                text = f.read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                text = f.read_text(encoding="utf-8", errors="replace")
-
-        rel = _rel_source(f)
-        chunks = chunk_markdown(text, source_path=rel)
-        # Filter out tiny chunks
-        chunks = [c for c in chunks if len(c["text"].strip()) >= 50]
-        all_chunks.extend(chunks)
-
-    if not all_chunks:
-        raise RuntimeError("No chunks produced (after filtering).")
-
-    # 2) Convert to LangChain Documents
-    documents = []
-    for i, c in enumerate(all_chunks):
-        doc = Document(
-            page_content=c["text"],
-            metadata={
-                "source": c.get("source", ""),
-                "heading": c.get("title", ""),
-                "chunk_index": i,
-            },
-        )
-        documents.append(doc)
-
-    # 3) Determine embedding dimension from the actual configured model
     embeddings = get_embeddings_model()
     embedding_dim = len(embeddings.embed_query("dimension probe"))
 
-    # 4) Connect to Qdrant and recreate collection
     client = QdrantClient(
         url=Config.QDRANT_URL,
         api_key=Config.QDRANT_API_KEY,
     )
 
-    # Delete existing collection if it exists (clean re-index)
-    collections = [c.name for c in client.get_collections().collections]
-    if Config.QDRANT_COLLECTION in collections:
-        client.delete_collection(Config.QDRANT_COLLECTION)
-        print(f"[ingest] deleted existing collection: {Config.QDRANT_COLLECTION}")
+    manifest = _load_manifest()
+    collection_exists = Config.QDRANT_COLLECTION in [
+        c.name for c in client.get_collections().collections
+    ]
+    force_full = force_full or os.getenv("FORCE_FULL_REINGEST", "false").lower() == "true"
 
-    # Create fresh collection
-    client.create_collection(
-        collection_name=Config.QDRANT_COLLECTION,
-        vectors_config=VectorParams(
-            size=embedding_dim,
-            distance=Distance.COSINE,
-        ),
+    # A full rebuild is required if: the collection doesn't exist yet, we
+    # have no manifest to trust (e.g. first run after upgrading from the old
+    # always-rebuild pipeline, or the manifest was wiped), the embedding
+    # dimension changed (Qdrant can't resize an existing collection), or the
+    # user explicitly asked for one via FORCE_FULL_REINGEST=true.
+    full_rebuild = (
+        not collection_exists
+        or manifest is None
+        or manifest.get("embedding_dim") != embedding_dim
+        or force_full
     )
-    print(f"[ingest] created collection: {Config.QDRANT_COLLECTION} (dim={embedding_dim})")
 
-    # 5) Add documents via LangChain (handles embedding + upload)
+    if full_rebuild:
+        if collection_exists:
+            client.delete_collection(Config.QDRANT_COLLECTION)
+            print(f"[ingest] full rebuild: deleted existing collection {Config.QDRANT_COLLECTION}")
+        client.create_collection(
+            collection_name=Config.QDRANT_COLLECTION,
+            vectors_config=VectorParams(size=embedding_dim, distance=Distance.COSINE),
+        )
+        print(f"[ingest] created collection: {Config.QDRANT_COLLECTION} (dim={embedding_dim})")
+        sources: dict = {}
+    else:
+        sources = dict(manifest.get("sources", {}))
+
     vector_store = QdrantVectorStore(
         client=client,
         collection_name=Config.QDRANT_COLLECTION,
         embedding=embeddings,
     )
 
-    # Generate stable UUIDs based on index
-    ids = [str(uuid.uuid5(uuid.NAMESPACE_DNS, f"chunk-{i}")) for i in range(len(documents))]
+    to_delete_ids: list[str] = []
+    to_upsert_docs: list[Document] = []
+    to_upsert_ids: list[str] = []
+    seen_sources: set[str] = set()
+    skipped = 0
+    changed = 0
 
-    vector_store.add_documents(documents, ids=ids)
+    for f in files:
+        rel = _rel_source(f)
+        seen_sources.add(rel)
+        raw_bytes = f.read_bytes()
+        content_hash = hashlib.sha256(raw_bytes).hexdigest()
 
-    # 6) Save info for reference (optional, not used at runtime)
-    out_dir = Path(Config.VECTOR_DB_PATH)
-    out_dir.mkdir(parents=True, exist_ok=True)
+        prior = sources.get(rel)
+        if prior and prior.get("hash") == content_hash:
+            skipped += 1
+            continue
 
-    with open(out_dir / "info.json", "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "repo_dir": str(REPO_DIR),
-                "files_indexed": [_rel_source(p) for p in files],
-                "chunks": len(all_chunks),
-                "embedding_dim": embedding_dim,
-                "qdrant_collection": Config.QDRANT_COLLECTION,
-                "storage": "qdrant",
-            },
-            f,
-            ensure_ascii=False,
-            indent=2,
+        changed += 1
+        if f.suffix.lower() == ".pdf":
+            print(f"[ingest] converting PDF via marker: {rel}")
+            text = convert_pdf_to_markdown(f)
+        else:
+            try:
+                text = raw_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                text = raw_bytes.decode("utf-8", errors="replace")
+
+        chunks = chunk_markdown(text, source_path=rel)
+        chunks = [c for c in chunks if len(c["text"].strip()) >= 50]
+
+        if prior:
+            to_delete_ids.extend(prior.get("chunk_ids", []))
+
+        new_ids = [_chunk_id(rel, i) for i in range(len(chunks))]
+        for i, c in enumerate(chunks):
+            to_upsert_docs.append(
+                Document(
+                    page_content=c["text"],
+                    metadata={
+                        "source": c.get("source", rel),
+                        "heading": c.get("title", ""),
+                        "chunk_index": i,
+                    },
+                )
+            )
+            to_upsert_ids.append(new_ids[i])
+
+        sources[rel] = {"hash": content_hash, "chunk_ids": new_ids}
+
+    # Sources that used to exist but were removed (deleted file / PDF removed via UI)
+    removed_sources = set(sources.keys()) - seen_sources
+    for rel in removed_sources:
+        to_delete_ids.extend(sources[rel].get("chunk_ids", []))
+        del sources[rel]
+
+    total_chunks = sum(len(s["chunk_ids"]) for s in sources.values())
+    if total_chunks == 0:
+        raise RuntimeError("No chunks produced across any source file (after filtering).")
+
+    if to_delete_ids:
+        client.delete(
+            collection_name=Config.QDRANT_COLLECTION,
+            points_selector=PointIdsList(points=to_delete_ids),
         )
 
-    print(f"[ingest] files: {len(files)} | chunks: {len(all_chunks)} | dim: {embedding_dim}")
+    if to_upsert_docs:
+        vector_store.add_documents(to_upsert_docs, ids=to_upsert_ids)
+
+    _save_manifest(
+        {
+            "qdrant_collection": Config.QDRANT_COLLECTION,
+            "embedding_dim": embedding_dim,
+            "sources": sources,
+        }
+    )
+
+    print(
+        f"[ingest] files: {len(files)} | changed: {changed} | skipped (unchanged): {skipped} "
+        f"| removed: {len(removed_sources)} | total chunks: {total_chunks} | dim: {embedding_dim}"
+    )
     print(f"[ingest] stored in Qdrant collection: {Config.QDRANT_COLLECTION}")
 
 
