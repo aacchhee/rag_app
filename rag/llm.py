@@ -1,21 +1,40 @@
 """
-LangChain-based LLM wrapper.
-Supports both blocking (chat_completion) and streaming (chat_completion_stream).
+LLM wrapper using raw OpenAI client for both blocking and streaming calls.
+Replaces LangChain streaming to get direct access to delta.reasoning_content
+from reasoning models (e.g. Kimi K2.6).
 """
 
 import json
 import logging
 import time
-
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-from config import Config
 from typing import Any, Generator
+
+import openai
+from config import Config
 from log_utils import current_request_id
 
-# Module-level singleton (initialized on first call)
-_llm_cache: dict[str, ChatOpenAI] = {}
+# Module-level singleton
+_raw_client: openai.OpenAI | None = None
 logger = logging.getLogger("gunicorn.error")
+
+
+def _get_raw_client() -> openai.OpenAI:
+    """Return (and cache) a raw OpenAI client."""
+    global _raw_client
+    if _raw_client is None:
+        Config.validate()
+        _raw_client = openai.OpenAI(
+            api_key=Config.LLM_API_KEY,
+            base_url=Config.chat_base_url(),
+            timeout=Config.LLM_TIMEOUT,
+        )
+        logger.info(
+            "[req:%s] [llm] created raw OpenAI client base_url=%s timeout=%s",
+            current_request_id(),
+            Config.chat_base_url(),
+            Config.LLM_TIMEOUT,
+        )
+    return _raw_client
 
 
 def _message_summary(messages: list[dict]) -> str:
@@ -26,126 +45,51 @@ def _message_summary(messages: list[dict]) -> str:
     return ",".join(parts)
 
 
-def _to_lc_messages(messages: list[dict]) -> list:
-    """Convert dict messages to LangChain message objects."""
-    lc_messages = []
-    for m in messages:
-        role = m["role"]
-        content = m["content"]
-        if role == "system":
-            lc_messages.append(SystemMessage(content=content))
-        elif role == "user":
-            lc_messages.append(HumanMessage(content=content))
-        else:
-            lc_messages.append(AIMessage(content=content))
-    return lc_messages
-
-
-def _coerce_text(content: Any) -> str:
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-            elif isinstance(item, dict):
-                text = item.get("text")
-                if isinstance(text, str):
-                    parts.append(text)
-        return "".join(parts)
-    return str(content)
-
-
-def _metadata_dict(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
-def _reasoning_text_from_message(message: Any) -> str:
-    candidates: list[Any] = []
-
-    additional_kwargs = _metadata_dict(getattr(message, "additional_kwargs", None))
-    response_metadata = _metadata_dict(getattr(message, "response_metadata", None))
-    provider_specific_fields = _metadata_dict(additional_kwargs.get("provider_specific_fields"))
-
-    candidates.extend(
-        [
-            additional_kwargs.get("reasoning_content"),
-            additional_kwargs.get("reasoning"),
-            provider_specific_fields.get("reasoning_content"),
-            provider_specific_fields.get("reasoning"),
-            response_metadata.get("reasoning_content"),
-            response_metadata.get("reasoning"),
-        ]
-    )
-
-    for candidate in candidates:
-        text = _coerce_text(candidate)
-        if text:
-            return text
-    return ""
-
-
-def _message_diagnostics(message: Any) -> dict[str, Any]:
-    additional_kwargs = _metadata_dict(getattr(message, "additional_kwargs", None))
-    response_metadata = _metadata_dict(getattr(message, "response_metadata", None))
-    return {
-        "reasoning_len": len(_reasoning_text_from_message(message)),
-        "additional_keys": sorted(additional_kwargs.keys()),
-        "response_metadata_keys": sorted(response_metadata.keys()),
-    }
-
-
-def _extra_body_key(extra_body: dict[str, Any] | None) -> str:
-    if not extra_body:
-        return "-"
-    return json.dumps(extra_body, sort_keys=True, ensure_ascii=True)
-
-
-def _get_llm(
-    temperature: float,
-    max_tokens: int,
-    streaming: bool = False,
-    *,
-    chat_model: str | None = None,
-    enable_thinking: bool | None = None,
-) -> ChatOpenAI:
+def _extract_delta(delta: Any) -> tuple[str, str]:
     """
-    Return a cached ChatOpenAI instance.
-    Streaming instances are cached separately.
+    Extract content and reasoning_content from a streaming delta.
+    Falls back through several strategies for provider-specific fields.
     """
-    resolved_chat_model = Config.resolve_chat_model(chat_model)
-    extra_body = Config.chat_extra_body(enable_thinking=enable_thinking)
-    key = (
-        f"{resolved_chat_model}:"
-        f"{temperature}:{max_tokens}:{'s' if streaming else 'b'}:{_extra_body_key(extra_body)}"
-    )
-    if key not in _llm_cache:
-        Config.validate()
-        logger.info(
-            "[req:%s] [llm] creating client model=%s streaming=%s temp=%s max_tokens=%s base_url=%s timeout=%s extra_body=%s",
-            current_request_id(),
-            resolved_chat_model,
-            streaming,
-            temperature,
-            max_tokens,
-            Config.chat_base_url(),
-            Config.LLM_TIMEOUT,
-            extra_body,
-        )
-        _llm_cache[key] = ChatOpenAI(
-            model=resolved_chat_model,
-            openai_api_key=Config.LLM_API_KEY,
-            openai_api_base=Config.chat_base_url(),
-            temperature=temperature,
-            max_tokens=max_tokens,
-            timeout=Config.LLM_TIMEOUT,
-            streaming=streaming,
-            extra_body=extra_body,
-        )
-    return _llm_cache[key]
+    content = delta.content or ""
+    reasoning = getattr(delta, "reasoning_content", None) or ""
+
+    if not reasoning and hasattr(delta, "model_extra"):
+        extras = delta.model_extra or {}
+        reasoning = extras.get("reasoning_content", "") or extras.get("reasoning", "")
+
+    if not reasoning:
+        try:
+            d = delta.model_dump()
+            reasoning = d.get("reasoning_content", "") or d.get("reasoning", "")
+        except Exception:
+            pass
+
+    return content or "", reasoning or ""
+
+
+def _extract_message(msg: Any) -> tuple[str, str]:
+    """
+    Extract content and reasoning_content from a non-streaming message.
+    """
+    content = msg.content or ""
+    reasoning = getattr(msg, "reasoning_content", None) or ""
+
+    if not reasoning and hasattr(msg, "model_extra"):
+        extras = msg.model_extra or {}
+        reasoning = extras.get("reasoning_content", "") or extras.get("reasoning", "")
+
+    if not reasoning and hasattr(msg, "provider_specific_fields"):
+        psf = msg.provider_specific_fields or {}
+        reasoning = psf.get("reasoning_content") or psf.get("reasoning") or ""
+
+    if not reasoning:
+        try:
+            d = msg.model_dump()
+            reasoning = d.get("reasoning_content", "") or d.get("reasoning", "")
+        except Exception:
+            pass
+
+    return content or "", reasoning or ""
 
 
 def _invoke_once(
@@ -158,13 +102,9 @@ def _invoke_once(
     attempt: str = "primary",
 ) -> tuple[str, dict[str, Any]]:
     resolved_chat_model = Config.resolve_chat_model(chat_model)
-    llm = _get_llm(
-        temperature,
-        max_tokens,
-        streaming=False,
-        chat_model=resolved_chat_model,
-        enable_thinking=enable_thinking,
-    )
+    extra_body = Config.chat_extra_body(enable_thinking=enable_thinking)
+    client = _get_raw_client()
+
     started = time.perf_counter()
     logger.info(
         "[req:%s] [llm] invoke start attempt=%s model=%s streaming=false temp=%s max_tokens=%s enable_thinking=%s messages=%d summary=%s",
@@ -177,47 +117,58 @@ def _invoke_once(
         len(messages),
         _message_summary(messages),
     )
-    response = llm.invoke(_to_lc_messages(messages))
-    content = _coerce_text(response.content)
-    diagnostics = _message_diagnostics(response)
+
+    response = client.chat.completions.create(
+        model=resolved_chat_model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        extra_body=extra_body,
+    )
+
+    choice = response.choices[0]
+    msg = choice.message
+    content, reasoning = _extract_message(msg)
+
+    diagnostics = {
+        "reasoning_len": len(reasoning),
+        "finish_reason": choice.finish_reason,
+    }
 
     # Debug audit whenever content looks empty or reasoning looks present
-    if not content or diagnostics["reasoning_len"] > 0:
+    if not content or reasoning:
         try:
             from debug_audit import dump_audit
+
             dump_audit(
                 endpoint=f"invoke_{attempt}",
                 chat_model=resolved_chat_model,
                 messages=messages,
-                response=response,
                 notes={
                     "content_len": len(content),
-                    "reasoning_len": diagnostics["reasoning_len"],
-                    "additional_keys": diagnostics["additional_keys"],
-                    "response_metadata_keys": diagnostics["response_metadata_keys"],
+                    "reasoning_len": len(reasoning),
+                    "finish_reason": choice.finish_reason,
                 },
             )
         except Exception:
             pass
 
     # Fallback: if content is empty but reasoning exists, surface the reasoning
-    if not content and diagnostics["reasoning_len"] > 0:
-        reasoning_text = _reasoning_text_from_message(response)
+    if not content and reasoning:
         logger.warning(
             "[req:%s] [llm] invoke empty content but reasoning present (%d chars); using reasoning as content",
             current_request_id(),
-            len(reasoning_text),
+            len(reasoning),
         )
-        content = reasoning_text
+        content = reasoning
 
     logger.info(
-        "[req:%s] [llm] invoke complete attempt=%s len=%d reasoning_len=%d additional_keys=%s response_metadata_keys=%s dur_ms=%.1f",
+        "[req:%s] [llm] invoke complete attempt=%s len=%d reasoning_len=%d finish_reason=%s dur_ms=%.1f",
         current_request_id(),
         attempt,
         len(content),
-        diagnostics["reasoning_len"],
-        ",".join(diagnostics["additional_keys"]) or "-",
-        ",".join(diagnostics["response_metadata_keys"]) or "-",
+        len(reasoning),
+        choice.finish_reason,
         (time.perf_counter() - started) * 1000,
     )
     return content, diagnostics
@@ -296,20 +247,26 @@ def chat_completion_stream(
     chat_model: str | None = None,
 ) -> Generator[str, None, None]:
     """
-    Streaming call. Yields tokens one at a time as strings.
+    Streaming call using raw OpenAI client.
+    Yields content tokens.  When a model only sends reasoning tokens
+    (common with reasoning models), the reasoning is buffered and
+    yielded at the end so the caller gets *something* instead of silence.
     """
     temp = Config.CHAT_TEMPERATURE if temperature is None else temperature
     tok = Config.CHAT_MAX_TOKENS if max_tokens is None else max_tokens
 
     try:
         resolved_chat_model = Config.resolve_chat_model(chat_model)
-        llm = _get_llm(temp, tok, streaming=True, chat_model=resolved_chat_model)
+        extra_body = Config.chat_extra_body()
+        client = _get_raw_client()
         started = time.perf_counter()
-        chunk_count = 0
-        total_chars = 0
-        reasoning_chars = 0
+
+        content_chunks = 0
+        total_content_chars = 0
+        reasoning_buffer: list[str] = []
+        total_reasoning_chars = 0
         first_token_ms = None
-        chunks_collected = []
+
         logger.info(
             "[req:%s] [llm] stream start model=%s temp=%s max_tokens=%s enable_thinking=%s messages=%d summary=%s",
             current_request_id(),
@@ -320,12 +277,23 @@ def chat_completion_stream(
             len(messages),
             _message_summary(messages),
         )
-        for chunk in llm.stream(_to_lc_messages(messages)):
-            chunks_collected.append(chunk)
-            content = _coerce_text(getattr(chunk, "content", None))
+
+        response = client.chat.completions.create(
+            model=resolved_chat_model,
+            messages=messages,
+            temperature=temp,
+            max_tokens=tok,
+            stream=True,
+            extra_body=extra_body,
+        )
+
+        for chunk in response:
+            delta = chunk.choices[0].delta
+            content, reasoning = _extract_delta(delta)
+
             if content:
-                chunk_count += 1
-                total_chars += len(content)
+                content_chunks += 1
+                total_content_chars += len(content)
                 if first_token_ms is None:
                     first_token_ms = (time.perf_counter() - started) * 1000
                     logger.info(
@@ -336,32 +304,33 @@ def chat_completion_stream(
                 yield content
                 continue
 
-            reasoning = _reasoning_text_from_message(chunk)
             if reasoning:
-                reasoning_chars += len(reasoning)
+                reasoning_buffer.append(reasoning)
+                total_reasoning_chars += len(reasoning)
+                continue
 
         logger.info(
             "[req:%s] [llm] stream complete chunks=%d chars=%d reasoning_chars=%d dur_ms=%.1f",
             current_request_id(),
-            chunk_count,
-            total_chars,
-            reasoning_chars,
+            content_chunks,
+            total_content_chars,
+            total_reasoning_chars,
             (time.perf_counter() - started) * 1000,
         )
 
         # Debug audit for empty or reasoning-heavy streams
-        if total_chars == 0 or reasoning_chars > 0:
+        if total_content_chars == 0 or total_reasoning_chars > 0:
             try:
                 from debug_audit import dump_audit
+
                 dump_audit(
                     endpoint="stream",
                     chat_model=resolved_chat_model,
                     messages=messages,
-                    chunks=chunks_collected,
                     notes={
-                        "chunk_count_yielded": chunk_count,
-                        "total_content_chars": total_chars,
-                        "total_reasoning_chars": reasoning_chars,
+                        "chunk_count_yielded": content_chunks,
+                        "total_content_chars": total_content_chars,
+                        "total_reasoning_chars": total_reasoning_chars,
                         "enable_thinking": Config.chat_enable_thinking(),
                     },
                 )
@@ -369,22 +338,16 @@ def chat_completion_stream(
                 pass
 
         # Fallbacks when stream produced no visible content
-        if total_chars == 0:
-            # If reasoning came through, yield it directly
-            if reasoning_chars > 0:
-                full_reasoning = ""
-                for chunk in chunks_collected:
-                    reasoning = _reasoning_text_from_message(chunk)
-                    if reasoning:
-                        full_reasoning += reasoning
-                if full_reasoning:
-                    logger.warning(
-                        "[req:%s] [llm] stream empty content but reasoning present (%d chars); yielding reasoning",
-                        current_request_id(),
-                        len(full_reasoning),
-                    )
-                    yield full_reasoning
-                    return
+        if total_content_chars == 0:
+            if reasoning_buffer:
+                full_reasoning = "".join(reasoning_buffer)
+                logger.warning(
+                    "[req:%s] [llm] stream empty content but reasoning present (%d chars); yielding reasoning",
+                    current_request_id(),
+                    len(full_reasoning),
+                )
+                yield full_reasoning
+                return
 
             if (
                 Config.chat_retry_with_thinking_disabled()
@@ -418,9 +381,9 @@ def chat_completion_stream(
                     )
     except Exception:
         logger.exception(
-            "[req:%s] [llm] stream failed after chunks=%d chars=%d",
+            "[req:%s] [llm] stream failed after content_chunks=%d chars=%d",
             current_request_id(),
-            locals().get("chunk_count", 0),
-            locals().get("total_chars", 0),
+            locals().get("content_chunks", 0),
+            locals().get("total_content_chars", 0),
         )
         raise
