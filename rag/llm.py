@@ -180,6 +180,36 @@ def _invoke_once(
     response = llm.invoke(_to_lc_messages(messages))
     content = _coerce_text(response.content)
     diagnostics = _message_diagnostics(response)
+
+    # Debug audit whenever content looks empty or reasoning looks present
+    if not content or diagnostics["reasoning_len"] > 0:
+        try:
+            from debug_audit import dump_audit
+            dump_audit(
+                endpoint=f"invoke_{attempt}",
+                chat_model=resolved_chat_model,
+                messages=messages,
+                response=response,
+                notes={
+                    "content_len": len(content),
+                    "reasoning_len": diagnostics["reasoning_len"],
+                    "additional_keys": diagnostics["additional_keys"],
+                    "response_metadata_keys": diagnostics["response_metadata_keys"],
+                },
+            )
+        except Exception:
+            pass
+
+    # Fallback: if content is empty but reasoning exists, surface the reasoning
+    if not content and diagnostics["reasoning_len"] > 0:
+        reasoning_text = _reasoning_text_from_message(response)
+        logger.warning(
+            "[req:%s] [llm] invoke empty content but reasoning present (%d chars); using reasoning as content",
+            current_request_id(),
+            len(reasoning_text),
+        )
+        content = reasoning_text
+
     logger.info(
         "[req:%s] [llm] invoke complete attempt=%s len=%d reasoning_len=%d additional_keys=%s response_metadata_keys=%s dur_ms=%.1f",
         current_request_id(),
@@ -279,6 +309,7 @@ def chat_completion_stream(
         total_chars = 0
         reasoning_chars = 0
         first_token_ms = None
+        chunks_collected = []
         logger.info(
             "[req:%s] [llm] stream start model=%s temp=%s max_tokens=%s enable_thinking=%s messages=%d summary=%s",
             current_request_id(),
@@ -290,6 +321,7 @@ def chat_completion_stream(
             _message_summary(messages),
         )
         for chunk in llm.stream(_to_lc_messages(messages)):
+            chunks_collected.append(chunk)
             content = _coerce_text(getattr(chunk, "content", None))
             if content:
                 chunk_count += 1
@@ -317,37 +349,73 @@ def chat_completion_stream(
             (time.perf_counter() - started) * 1000,
         )
 
-        if (
-            total_chars == 0
-            and Config.chat_retry_with_thinking_disabled()
-            and Config.chat_enable_thinking() is not False
-        ):
-            logger.warning(
-                "[req:%s] [llm] empty stream content; retrying once with non-streaming enable_thinking=false",
-                current_request_id(),
-            )
-            fallback_content, fallback_diagnostics = _invoke_once(
-                messages,
-                temperature=temp,
-                max_tokens=tok,
-                chat_model=resolved_chat_model,
-                enable_thinking=False,
-                attempt="stream_fallback_nonthinking",
-            )
-            if fallback_content:
-                logger.warning(
-                    "[req:%s] [llm] stream fallback restored content len=%d reasoning_len=%d",
-                    current_request_id(),
-                    len(fallback_content),
-                    fallback_diagnostics["reasoning_len"],
+        # Debug audit for empty or reasoning-heavy streams
+        if total_chars == 0 or reasoning_chars > 0:
+            try:
+                from debug_audit import dump_audit
+                dump_audit(
+                    endpoint="stream",
+                    chat_model=resolved_chat_model,
+                    messages=messages,
+                    chunks=chunks_collected,
+                    notes={
+                        "chunk_count_yielded": chunk_count,
+                        "total_content_chars": total_chars,
+                        "total_reasoning_chars": reasoning_chars,
+                        "enable_thinking": Config.chat_enable_thinking(),
+                    },
                 )
-                yield fallback_content
-            else:
+            except Exception:
+                pass
+
+        # Fallbacks when stream produced no visible content
+        if total_chars == 0:
+            # If reasoning came through, yield it directly
+            if reasoning_chars > 0:
+                full_reasoning = ""
+                for chunk in chunks_collected:
+                    reasoning = _reasoning_text_from_message(chunk)
+                    if reasoning:
+                        full_reasoning += reasoning
+                if full_reasoning:
+                    logger.warning(
+                        "[req:%s] [llm] stream empty content but reasoning present (%d chars); yielding reasoning",
+                        current_request_id(),
+                        len(full_reasoning),
+                    )
+                    yield full_reasoning
+                    return
+
+            if (
+                Config.chat_retry_with_thinking_disabled()
+                and Config.chat_enable_thinking() is not False
+            ):
                 logger.warning(
-                    "[req:%s] [llm] stream fallback still empty reasoning_len=%d",
+                    "[req:%s] [llm] empty stream content; retrying once with non-streaming enable_thinking=false",
                     current_request_id(),
-                    fallback_diagnostics["reasoning_len"],
                 )
+                fallback_content, fallback_diagnostics = _invoke_once(
+                    messages,
+                    temperature=temp,
+                    max_tokens=tok,
+                    chat_model=resolved_chat_model,
+                    enable_thinking=False,
+                    attempt="stream_fallback_nonthinking",
+                )
+                if fallback_content:
+                    logger.warning(
+                        "[req:%s] [llm] stream fallback restored content len=%d reasoning_len=%d",
+                        current_request_id(),
+                        len(fallback_content),
+                        fallback_diagnostics["reasoning_len"],
+                    )
+                    yield fallback_content
+                else:
+                    logger.warning(
+                        "[req:%s] [llm] stream fallback still empty reasoning_len=%d",
+                        current_request_id(),
+                        fallback_diagnostics["reasoning_len"],
+                    )
     except Exception:
         logger.exception(
             "[req:%s] [llm] stream failed after chunks=%d chars=%d",
