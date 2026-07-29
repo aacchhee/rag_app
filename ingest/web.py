@@ -8,6 +8,8 @@ the actual ingest logic in ingest/ingest.py is untouched.
 
 import contextlib
 import io
+import os
+import sys
 import threading
 import traceback
 from datetime import datetime, timezone
@@ -20,7 +22,7 @@ from ingest.ingest import PDF_UPLOAD_DIR, main as run_ingest
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB per upload
 
-_lock = threading.Lock()
+_LOCK = threading.Lock()
 _state = {
     "status": "idle",  # idle | running | done | error
     "started_at": None,
@@ -29,16 +31,37 @@ _state = {
     "log": "",
 }
 
+# Auto-exit after 30 minutes of inactivity once a job completes.
+_last_request_time = datetime.now(timezone.utc)
+_AUTO_EXIT_DELAY_SEC = int(os.getenv("INGEST_AUTO_EXIT_DELAY_MIN", "30")) * 60
+
 
 class _LogStream(io.StringIO):
     def write(self, s):
-        with _lock:
+        with _LOCK:
             _state["log"] += s
         return super().write(s)
 
 
+def _bump_activity():
+    global _last_request_time
+    _last_request_time = datetime.now(timezone.utc)
+
+
+def _schedule_auto_exit():
+    def _watchdog():
+        while True:
+            threading.Event().wait(timeout=_AUTO_EXIT_DELAY_SEC)
+            with _LOCK:
+                status = _state["status"]
+                idle_for = (datetime.now(timezone.utc) - _last_request_time).total_seconds()
+            if status != "running" and idle_for >= _AUTO_EXIT_DELAY_SEC:
+                sys.exit(0)
+    threading.Thread(target=_watchdog, daemon=True).start()
+
+
 def _run_job(force_full: bool = False):
-    with _lock:
+    with _LOCK:
         _state.update(
             status="running",
             started_at=datetime.now(timezone.utc).isoformat(),
@@ -50,31 +73,32 @@ def _run_job(force_full: bool = False):
     try:
         with contextlib.redirect_stdout(_LogStream()):
             run_ingest(force_full=force_full)
-        with _lock:
+        with _LOCK:
             _state["status"] = "done"
     except Exception:
-        with _lock:
+        with _LOCK:
             _state["status"] = "error"
             _state["error"] = traceback.format_exc()
     finally:
-        with _lock:
+        with _LOCK:
             _state["finished_at"] = datetime.now(timezone.utc).isoformat()
 
 
 @app.get("/")
 def index():
+    _bump_activity()
     return Response(_PAGE, mimetype="text/html")
 
 
 @app.get("/status")
 def status():
-    with _lock:
+    with _LOCK:
         return jsonify(dict(_state))
 
 
 @app.post("/run")
 def trigger():
-    with _lock:
+    with _LOCK:
         if _state["status"] == "running":
             return jsonify({"error": "ingest already running"}), 409
     force_full = bool((request.get_json(silent=True) or {}).get("force_full"))
@@ -84,12 +108,14 @@ def trigger():
 
 @app.get("/pdfs")
 def list_pdfs():
+    _bump_activity()
     PDF_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     return jsonify(sorted(p.name for p in PDF_UPLOAD_DIR.glob("*.pdf")))
 
 
 @app.post("/pdfs")
 def upload_pdf():
+    _bump_activity()
     file = request.files.get("file")
     if file is None or not file.filename:
         return jsonify({"error": "no file provided"}), 400
@@ -110,6 +136,7 @@ def upload_pdf():
 
 @app.delete("/pdfs/<path:filename>")
 def delete_pdf(filename):
+    _bump_activity()
     safe_name = secure_filename(filename)
     target = PDF_UPLOAD_DIR / safe_name
     if safe_name and target.is_file() and target.suffix.lower() == ".pdf":
