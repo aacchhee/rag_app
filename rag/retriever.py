@@ -47,23 +47,52 @@ class Retriever:
         # Verify collection exists
         collections = [c.name for c in self.client.get_collections().collections]
         if self.collection not in collections:
-            raise RuntimeError(
-                f"Qdrant collection '{self.collection}' not found. "
-                f"Available: {collections}. Run ingest first."
+            logger.warning(
+                "[req:%s] [retriever] Qdrant collection '%s' not found. "
+                "Available: %s. Ingest notes to populate it.",
+                current_request_id(),
+                self.collection,
+                collections,
+            )
+            self._ready = False
+        else:
+            self._ready = True
+            # Get point count for logging
+            info = self.client.get_collection(self.collection)
+            logger.info(
+                "[req:%s] [retriever] connected to Qdrant collection '%s' (%d points)",
+                current_request_id(),
+                self.collection,
+                info.points_count,
             )
 
-        # Get point count for logging
-        info = self.client.get_collection(self.collection)
-        logger.info(
-            "[req:%s] [retriever] connected to Qdrant collection '%s' (%d points)",
-            current_request_id(),
-            self.collection,
-            info.points_count,
-        )
+    def _ensure_ready(self) -> bool:
+        if self._ready:
+            return True
+        # Re-check: collection may have been created after startup
+        collections = [c.name for c in self.client.get_collections().collections]
+        if self.collection in collections:
+            self._ready = True
+            info = self.client.get_collection(self.collection)
+            logger.info(
+                "[req:%s] [retriever] collection '%s' now available (%d points)",
+                current_request_id(),
+                self.collection,
+                info.points_count,
+            )
+        return self._ready
 
     def search(
         self, query_vec: np.ndarray, top_k: int, *, log_hits: bool = True
     ) -> List[Hit]:
+        if not self._ensure_ready():
+            if log_hits:
+                logger.info(
+                    "[req:%s] [retrieve] collection not ready, returning empty hits",
+                    current_request_id(),
+                )
+            return []
+
         q = query_vec.astype("float32")
         if q.ndim != 1:
             q = q.flatten()
