@@ -60,6 +60,9 @@ def _schedule_auto_exit():
     threading.Thread(target=_watchdog, daemon=True).start()
 
 
+_schedule_auto_exit()
+
+
 def _run_job(force_full: bool = False):
     with _LOCK:
         _state.update(
