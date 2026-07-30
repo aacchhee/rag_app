@@ -9,6 +9,7 @@ the actual ingest logic in ingest/ingest.py is untouched.
 import contextlib
 import io
 import os
+import signal
 import sys
 import threading
 import traceback
@@ -56,7 +57,7 @@ def _schedule_auto_exit():
                 status = _state["status"]
                 idle_for = (datetime.now(timezone.utc) - _last_request_time).total_seconds()
             if status != "running" and idle_for >= _AUTO_EXIT_DELAY_SEC:
-                sys.exit(0)
+                os.kill(os.getpid(), signal.SIGTERM)
     threading.Thread(target=_watchdog, daemon=True).start()
 
 
