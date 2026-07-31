@@ -970,3 +970,165 @@ def assess_answer():
         yield _sse("done", {"request_id": request_id, "chat_model": chat_model, "ok": True})
 
     return _stream_response(generate())
+
+
+@app.get("/status-page")
+def status_page():
+    return Response(_STATUS_PAGE, mimetype="text/html")
+
+
+_STATUS_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ingest Service Status</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #f6f7f9;
+    color: #1a1a1a;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    margin: 0;
+    padding: 3rem 1rem;
+  }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+    max-width: 520px;
+    width: 100%;
+    padding: 2rem 2.2rem;
+  }
+  h1 { margin: 0 0 0.2rem; font-size: 1.35rem; }
+  .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 1.5rem; }
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 0.7rem 0; border-bottom: 1px solid #eee; }
+  .row:last-child { border-bottom: none; }
+  .label { font-weight: 500; color: #444; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+    padding: 0.35rem 0.75rem; border-radius: 999px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .status-idle { background: #e8f5e9; color: #2a7a2a; }
+  .status-idle .dot { background: #2a7a2a; }
+  .status-running { background: #fff3e0; color: #b8860b; }
+  .status-running .dot { background: #b8860b; }
+  .status-done { background: #e3f2fd; color: #1565c0; }
+  .status-done .dot { background: #1565c0; }
+  .status-error { background: #ffebee; color: #c0392b; }
+  .status-error .dot { background: #c0392b; }
+  .status-down { background: #f5f5f5; color: #666; }
+  .status-down .dot { background: #999; }
+  .timestamp { font-variant-numeric: tabular-nums; color: #555; }
+  .log-box {
+    background: #111; color: #ddd;
+    border-radius: 8px; padding: 1rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.82rem; line-height: 1.45;
+    white-space: pre-wrap; word-break: break-word;
+    max-height: 300px; overflow-y: auto;
+    margin-top: 0.8rem;
+  }
+  .error-msg { color: #c0392b; font-weight: 500; }
+  .footer { text-align: center; margin-top: 1.2rem; font-size: 0.8rem; color: #888; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Ingest Service Status</h1>
+    <div class="subtitle">Live view into the document ingestion pipeline</div>
+
+    <div class="row">
+      <span class="label">State</span>
+      <span id="state-badge" class="badge status-down"><span class="dot"></span>Unknown</span>
+    </div>
+    <div class="row">
+      <span class="label">Started</span>
+      <span id="started" class="timestamp">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Finished</span>
+      <span id="finished" class="timestamp">—</span>
+    </div>
+    <div class="row">
+      <span class="label">Last checked</span>
+      <span id="last-check" class="timestamp">—</span>
+    </div>
+
+    <div id="error-row" class="row" style="display:none;">
+      <span class="label">Error</span>
+      <span id="error-text" class="error-msg"></span>
+    </div>
+
+    <div id="log-container" style="display:none;">
+      <div class="row" style="border-bottom:none;padding-bottom:0.2rem;">
+        <span class="label">Log output</span>
+      </div>
+      <pre id="log" class="log-box"></pre>
+    </div>
+
+    <div class="footer">Refreshes automatically every 5 seconds</div>
+  </div>
+
+<script>
+const badge = document.getElementById('state-badge');
+const startedEl = document.getElementById('started');
+const finishedEl = document.getElementById('finished');
+const lastCheckEl = document.getElementById('last-check');
+const errorRow = document.getElementById('error-row');
+const errorText = document.getElementById('error-text');
+const logContainer = document.getElementById('log-container');
+const logEl = document.getElementById('log');
+
+function fmt(ts) {
+  if (!ts) return '—';
+  try { return new Date(ts).toLocaleString(); } catch { return ts; }
+}
+
+async function poll() {
+  let state = { status: 'down', started_at: null, finished_at: null, error: null, log: '' };
+  try {
+    const res = await fetch('/ingest/status', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    state = await res.json();
+  } catch (e) {
+    state.status = 'down';
+    state.error = e.message;
+  }
+
+  const status = state.status || 'down';
+  badge.className = 'badge status-' + status;
+  badge.innerHTML = '<span class="dot"></span>' + status;
+
+  startedEl.textContent = fmt(state.started_at);
+  finishedEl.textContent = fmt(state.finished_at);
+  lastCheckEl.textContent = new Date().toLocaleTimeString();
+
+  if (state.error) {
+    errorRow.style.display = 'flex';
+    errorText.textContent = state.error;
+  } else {
+    errorRow.style.display = 'none';
+  }
+
+  if (state.log) {
+    logContainer.style.display = 'block';
+    logEl.textContent = state.log;
+    logEl.scrollTop = logEl.scrollHeight;
+  } else {
+    logContainer.style.display = 'none';
+  }
+}
+
+poll();
+setInterval(poll, 5000);
+</script>
+</body>
+</html>
+"""
