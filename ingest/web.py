@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from flask import Flask, Response, jsonify, request
 from werkzeug.utils import secure_filename
 
-from ingest.ingest import PDF_UPLOAD_DIR, main as run_ingest
+from ingest.ingest import _load_manifest, PDF_UPLOAD_DIR, main as run_ingest
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB per upload
@@ -92,6 +92,33 @@ def _run_job(force_full: bool = False):
 def index():
     _bump_activity()
     return Response(_PAGE, mimetype="text/html")
+
+
+@app.get("/sources")
+def list_sources():
+    _bump_activity()
+    manifest = _load_manifest()
+    if manifest is None:
+        return jsonify({"indexed": False, "sources": []})
+    sources = manifest.get("sources", {})
+    items = [
+        {
+            "source": src,
+            "chunks": len(meta.get("chunk_ids", [])),
+            "hash": meta.get("hash", "")[:16] + "…",
+        }
+        for src, meta in sorted(sources.items())
+    ]
+    return jsonify(
+        {
+            "indexed": True,
+            "collection": manifest.get("qdrant_collection"),
+            "embedding_dim": manifest.get("embedding_dim"),
+            "total_sources": len(items),
+            "total_chunks": sum(i["chunks"] for i in items),
+            "sources": items,
+        }
+    )
 
 
 @app.get("/status")
@@ -191,6 +218,19 @@ _PAGE = """<!doctype html>
   <div id="status" class="idle">idle</div>
   <pre id="log"></pre>
 
+  <h2>Indexed Sources</h2>
+  <p>Everything currently stored in Qdrant, with chunk counts.</p>
+  <div id="sources-summary" style="font-size: 0.9rem; color: #555; margin-bottom: 0.5rem;"></div>
+  <table id="sources-table" style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+    <thead>
+      <tr style="border-bottom: 2px solid #ccc; text-align: left;">
+        <th style="padding: 0.4rem;">Source</th>
+        <th style="padding: 0.4rem; width: 80px;">Chunks</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
 <script>
 const btn = document.getElementById('run-btn');
 const statusEl = document.getElementById('status');
@@ -242,6 +282,39 @@ async function deletePdf(name) {
 }
 
 loadPdfs();
+
+async function loadSources() {
+  const tbody = document.querySelector('#sources-table tbody');
+  const summary = document.getElementById('sources-summary');
+  try {
+    const res = await fetch('/sources');
+    const data = await res.json();
+    if (!data.indexed) {
+      summary.textContent = 'Nothing indexed yet. Run an ingest first.';
+      tbody.innerHTML = '';
+      return;
+    }
+    summary.textContent = `Collection: ${data.collection || '-'} | dim=${data.embedding_dim || '-'} | ${data.total_sources} sources | ${data.total_chunks} chunks`;
+    tbody.innerHTML = '';
+    for (const item of data.sources) {
+      const tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid #eee';
+      const tdSrc = document.createElement('td');
+      tdSrc.style.padding = '0.4rem';
+      tdSrc.textContent = item.source;
+      const tdChunks = document.createElement('td');
+      tdChunks.style.padding = '0.4rem';
+      tdChunks.textContent = item.chunks;
+      tr.appendChild(tdSrc);
+      tr.appendChild(tdChunks);
+      tbody.appendChild(tr);
+    }
+  } catch (e) {
+    summary.textContent = 'Failed to load sources: ' + e.message;
+  }
+}
+
+loadSources();
 
 async function runIngest() {
   const res = await fetch('/run', {
