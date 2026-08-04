@@ -990,17 +990,18 @@ _STATUS_PAGE = """<!doctype html>
     background: #f6f7f9;
     color: #1a1a1a;
     display: flex;
-    justify-content: center;
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: center;
     min-height: 100vh;
     margin: 0;
     padding: 3rem 1rem;
+    gap: 1.5rem;
   }
   .card {
     background: #fff;
     border-radius: 12px;
     box-shadow: 0 2px 16px rgba(0,0,0,0.06);
-    max-width: 520px;
+    max-width: 720px;
     width: 100%;
     padding: 2rem 2.2rem;
   }
@@ -1037,6 +1038,29 @@ _STATUS_PAGE = """<!doctype html>
   }
   .error-msg { color: #c0392b; font-weight: 500; }
   .footer { text-align: center; margin-top: 1.2rem; font-size: 0.8rem; color: #888; }
+
+  /* --- History bars --- */
+  .bar-chart { display: flex; align-items: flex-end; gap: 2px; height: 60px; margin-top: 0.8rem; }
+  .bar {
+    flex: 1;
+    min-width: 2px;
+    border-radius: 2px 2px 0 0;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .bar:hover { opacity: 0.7; }
+  .bar-idle { background: #2a7a2a; }
+  .bar-running { background: #b8860b; }
+  .bar-done { background: #1565c0; }
+  .bar-error { background: #c0392b; }
+  .bar-down { background: #d0d0d0; }
+  .bar-legend { display: flex; gap: 1rem; font-size: 0.75rem; color: #555; margin-top: 0.5rem; flex-wrap: wrap; }
+  .bar-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+  .bar-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .range-btns { display: flex; gap: 0.4rem; margin-bottom: 0.8rem; }
+  .range-btns button { font-size: 0.8rem; padding: 0.25rem 0.6rem; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer; }
+  .range-btns button.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+  #history-info { font-size: 0.8rem; color: #666; margin-top: 0.3rem; min-height: 1.2rem; }
 </style>
 </head>
 <body>
@@ -1050,15 +1074,15 @@ _STATUS_PAGE = """<!doctype html>
     </div>
     <div class="row">
       <span class="label">Started</span>
-      <span id="started" class="timestamp">—</span>
+      <span id="started" class="timestamp">&mdash;</span>
     </div>
     <div class="row">
       <span class="label">Finished</span>
-      <span id="finished" class="timestamp">—</span>
+      <span id="finished" class="timestamp">&mdash;</span>
     </div>
     <div class="row">
       <span class="label">Last checked</span>
-      <span id="last-check" class="timestamp">—</span>
+      <span id="last-check" class="timestamp">&mdash;</span>
     </div>
 
     <div id="error-row" class="row" style="display:none;">
@@ -1076,6 +1100,28 @@ _STATUS_PAGE = """<!doctype html>
     <div class="footer">Refreshes automatically every 5 seconds</div>
   </div>
 
+  <div class="card">
+    <h1>Ingest History</h1>
+    <div class="subtitle">Per-bucket availability over the selected window</div>
+
+    <div class="range-btns">
+      <button id="btn-24h" class="active" onclick="setRange(24)">Last 24h</button>
+      <button id="btn-7d" onclick="setRange(7 * 24)">Last 7 days</button>
+      <button id="btn-30d" onclick="setRange(30 * 24)">Last 30 days</button>
+    </div>
+
+    <div id="bar-chart" class="bar-chart"></div>
+    <div id="history-info"></div>
+
+    <div class="bar-legend">
+      <span><i class="bar-idle"></i> Idle</span>
+      <span><i class="bar-running"></i> Running</span>
+      <span><i class="bar-done"></i> Done</span>
+      <span><i class="bar-error"></i> Error</span>
+      <span><i class="bar-down"></i> Down / No data</span>
+    </div>
+  </div>
+
 <script>
 const badge = document.getElementById('state-badge');
 const startedEl = document.getElementById('started');
@@ -1087,7 +1133,7 @@ const logContainer = document.getElementById('log-container');
 const logEl = document.getElementById('log');
 
 function fmt(ts) {
-  if (!ts) return '—';
+  if (!ts) return '&mdash;';
   try { return new Date(ts).toLocaleString(); } catch { return ts; }
 }
 
@@ -1128,6 +1174,110 @@ async function poll() {
 
 poll();
 setInterval(poll, 5000);
+
+/* --- History bars --- */
+let currentRangeHours = 24;
+
+function bucketCount(hours) {
+  if (hours <= 24) return 48;      // 30 min buckets
+  if (hours <= 7 * 24) return 84;  // 2 h buckets
+  return 60;                       // 12 h buckets for 30d
+}
+
+function setRange(hours) {
+  currentRangeHours = hours;
+  for (const btn of document.querySelectorAll('.range-btns button')) btn.classList.remove('active');
+  if (hours <= 24) document.getElementById('btn-24h').classList.add('active');
+  else if (hours <= 7 * 24) document.getElementById('btn-7d').classList.add('active');
+  else document.getElementById('btn-30d').classList.add('active');
+  renderHistory();
+}
+
+function parseTs(ts) {
+  try { return new Date(ts).getTime(); } catch { return 0; }
+}
+
+function statePriority(s) {
+  return { error: 4, running: 3, done: 2, idle: 1, down: 0 }[s] || 0;
+}
+
+async function renderHistory() {
+  const chart = document.getElementById('bar-chart');
+  const info = document.getElementById('history-info');
+  chart.innerHTML = '';
+  info.textContent = 'Loading...';
+
+  const now = Date.now();
+  const rangeMs = currentRangeHours * 3600_000;
+  const startMs = now - rangeMs;
+  const nBuckets = bucketCount(currentRangeHours);
+  const bucketMs = rangeMs / nBuckets;
+
+  let events = [];
+  try {
+    const res = await fetch('/ingest/history');
+    if (res.ok) events = (await res.json()).events || [];
+  } catch (e) {
+    info.textContent = 'Failed to load history';
+    return;
+  }
+
+  // Oldest first so carry-forward works
+  events = events.slice().reverse();
+
+  const buckets = Array(nBuckets).fill(null).map((_, i) => ({
+    t0: startMs + i * bucketMs,
+    t1: startMs + (i + 1) * bucketMs,
+    states: [],
+  }));
+
+  let carriedState = 'down';
+  let evIdx = 0;
+
+  for (let i = 0; i < nBuckets; i++) {
+    const b = buckets[i];
+    // If there were no events at all before this bucket, it's down until first event
+    if (evIdx === 0 && events.length > 0 && parseTs(events[0].t) > b.t1) {
+      carriedState = 'down';
+    }
+
+    while (evIdx < events.length && parseTs(events[evIdx].t) <= b.t1) {
+      const ev = events[evIdx];
+      if (ev.type === 'run_start') carriedState = 'running';
+      else if (ev.type === 'run_done') carriedState = 'done';
+      else if (ev.type === 'run_error') carriedState = 'error';
+      b.states.push(carriedState);
+      evIdx++;
+    }
+
+    // If no events fell exactly in this bucket, use carried state
+    if (!b.states.length) {
+      b.finalState = carriedState;
+    } else {
+      // Pick highest priority state in bucket
+      b.finalState = b.states.reduce((a, s) => statePriority(s) > statePriority(a) ? s : a, b.states[0]);
+    }
+  }
+
+  // Render bars
+  for (const b of buckets) {
+    const bar = document.createElement('div');
+    bar.className = 'bar bar-' + (b.finalState || 'down');
+    const d0 = new Date(b.t0);
+    const d1 = new Date(b.t1);
+    bar.title = d0.toLocaleString() + ' — ' + d1.toLocaleString() + ': ' + (b.finalState || 'down');
+    chart.appendChild(bar);
+  }
+
+  const total = buckets.length;
+  const counts = {};
+  for (const b of buckets) counts[b.finalState] = (counts[b.finalState] || 0) + 1;
+  const pct = s => ((counts[s] || 0) / total * 100).toFixed(1);
+  info.textContent = 'Idle ' + pct('idle') + '% | Running ' + pct('running') + '% | Done ' + pct('done') + '% | Error ' + pct('error') + '% | Down ' + pct('down') + '%';
+}
+
+renderHistory();
+setInterval(renderHistory, 30000);
 </script>
 </body>
 </html>

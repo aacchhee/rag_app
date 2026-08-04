@@ -8,17 +8,36 @@ the actual ingest logic in ingest/ingest.py is untouched.
 
 import contextlib
 import io
+import json
 import os
 import signal
 import sys
 import threading
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import Flask, Response, jsonify, request
 from werkzeug.utils import secure_filename
 
 from ingest.ingest import _load_manifest, PDF_UPLOAD_DIR, main as run_ingest
+
+# --- Event history (JSONL) ---
+HISTORY_FILE = PDF_UPLOAD_DIR.parent / "ingest_history.jsonl"
+_MAX_HISTORY_RETENTION_DAYS = 90
+
+
+def _log_event(event_type: str, **extra) -> None:
+    entry = {
+        "t": datetime.now(timezone.utc).isoformat(),
+        "type": event_type,
+        **extra,
+    }
+    try:
+        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(HISTORY_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB per upload
@@ -65,6 +84,7 @@ _schedule_auto_exit()
 
 
 def _run_job(force_full: bool = False):
+    _log_event("run_start", force_full=force_full)
     with _LOCK:
         _state.update(
             status="running",
@@ -79,10 +99,12 @@ def _run_job(force_full: bool = False):
             run_ingest(force_full=force_full)
         with _LOCK:
             _state["status"] = "done"
+        _log_event("run_done")
     except Exception:
         with _LOCK:
             _state["status"] = "error"
             _state["error"] = traceback.format_exc()
+        _log_event("run_error")
     finally:
         with _LOCK:
             _state["finished_at"] = datetime.now(timezone.utc).isoformat()
@@ -92,6 +114,35 @@ def _run_job(force_full: bool = False):
 def index():
     _bump_activity()
     return Response(_PAGE, mimetype="text/html")
+
+
+@app.get("/history")
+def get_history():
+    _bump_activity()
+    since = request.args.get("since")
+    until = request.args.get("until")
+    cutoff = datetime.now(timezone.utc) - timedelta(days=_MAX_HISTORY_RETENTION_DAYS)
+
+    events = []
+    if HISTORY_FILE.exists():
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                    t = datetime.fromisoformat(ev.get("t", "1970-01-01T00:00:00+00:00"))
+                    if t < cutoff:
+                        continue
+                    if since and t < datetime.fromisoformat(since):
+                        continue
+                    if until and t > datetime.fromisoformat(until):
+                        continue
+                    events.append(ev)
+                except (ValueError, TypeError):
+                    continue
+    return jsonify(events=list(reversed(events[-10000:])))
 
 
 @app.get("/sources")
