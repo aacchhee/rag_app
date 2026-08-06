@@ -721,7 +721,7 @@
           body: JSON.stringify(applySelectedCourse(applySelectedChatModel({
             question: lastSingleQuestion,
             notes_answer: lastNotesAnswer
-          }))
+          })))
         });
 
         if (!response.ok) {
@@ -808,7 +808,7 @@
             problem: currentProblemRaw,
             topic_question: lastSingleQuestion,
             notes_answer: lastNotesAnswer
-          }))
+          })))
         });
 
         if (!response.ok) {
@@ -900,7 +900,7 @@
             problem: currentProblemRaw,
             generated_answer: currentGeneratedAnswerRaw,
             student_answer: studentAnswer
-          }))
+          })))
         });
 
         if (!response.ok) {
