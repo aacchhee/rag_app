@@ -72,6 +72,13 @@
           </select>
         </label>
 
+        <label class="muted" style="display:flex; align-items:center; gap:8px;" id="courseLabel">
+          Course:
+          <select id="courseSelect" style="max-width:200px;">
+            <option value="">All courses</option>
+          </select>
+        </label>
+
         <label class="mode-toggle">
           <input type="checkbox" id="chatMode"> Chat mode
         </label>
@@ -557,6 +564,39 @@
       return payload;
     }
 
+    // --- Courses ---
+    async function loadCourses() {
+      var select = $("courseSelect");
+      select.innerHTML = '<option value="">All courses</option>';
+      try {
+        var response = await fetch("/courses");
+        if (!response.ok) return;
+        var names = await response.json();
+        for (var i = 0; i < names.length; i++) {
+          var opt = document.createElement("option");
+          opt.value = names[i];
+          opt.textContent = names[i];
+          select.appendChild(opt);
+        }
+      } catch (e) {
+        logDebug("Courses load failed", { error: String(e) });
+      }
+    }
+
+    function getSelectedCourse() {
+      var select = $("courseSelect");
+      if (!select) return "";
+      return String(select.value || "").trim();
+    }
+
+    function applySelectedCourse(payload) {
+      var course = getSelectedCourse();
+      if (course) {
+        payload.course = course;
+      }
+      return payload;
+    }
+
     async function loadChatModels() {
       setChatModelUnavailable("Loading...");
 
@@ -678,7 +718,7 @@
         var response = await fetch("/rag2/problem", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(applySelectedChatModel({
+          body: JSON.stringify(applySelectedCourse(applySelectedChatModel({
             question: lastSingleQuestion,
             notes_answer: lastNotesAnswer
           }))
@@ -764,7 +804,7 @@
         var response = await fetch("/rag2/calculate-answer", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(applySelectedChatModel({
+          body: JSON.stringify(applySelectedCourse(applySelectedChatModel({
             problem: currentProblemRaw,
             topic_question: lastSingleQuestion,
             notes_answer: lastNotesAnswer
@@ -856,7 +896,7 @@
         var response = await fetch("/rag2/assess", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(applySelectedChatModel({
+          body: JSON.stringify(applySelectedCourse(applySelectedChatModel({
             problem: currentProblemRaw,
             generated_answer: currentGeneratedAnswerRaw,
             student_answer: studentAnswer
@@ -940,12 +980,12 @@
         return;
       }
 
-      var payload = applySelectedChatModel({
+      var payload = applySelectedCourse(applySelectedChatModel({
         question: question,
         extra_mode: $("extraMode").value,
         chat_mode: isChatMode,
         history: isChatMode ? chatHistory : []
-      });
+      }));
 
       $("askBtn").disabled = true;
 
@@ -1131,6 +1171,7 @@
       setStatus("UI ready");
       resetGeneratedAnswerUI();
       loadChatModels();
+      loadCourses();
       $("askBtn").addEventListener("click", ask);
       $("q").addEventListener("keydown", function (e) {
         if ((e.ctrlKey || e.metaKey) && e.key === "Enter") ask();
