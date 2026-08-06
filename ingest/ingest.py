@@ -21,13 +21,30 @@ from config import Config
 
 REPO_DIR = Path("/home/rag/notes_repo")
 
-# Separate, writable mount for PDFs uploaded via the ingest web UI (ingest/web.py).
-# Kept outside of REPO_DIR, which is mounted read-only.
-PDF_UPLOAD_DIR = Path("/app/data/pdf_uploads")
+# Course-scoped upload directory for PDFs uploaded via the ingest web UI.
+# Each subdirectory is a course name, e.g. /app/data/courses/ma1101/week1.pdf
+COURSES_DIR = Path("/app/data/courses")
+
+
+def _course_for(f: Path) -> str | None:
+    """Return course name inferred from the parent folder under COURSES_DIR, or None."""
+    try:
+        rel = f.relative_to(COURSES_DIR)
+        parts = rel.parts
+        return parts[0] if len(parts) > 1 else None
+    except ValueError:
+        pass
+    try:
+        rel = f.relative_to(REPO_DIR / "_includes")
+        parts = rel.parts
+        return parts[0] if len(parts) > 1 else None
+    except ValueError:
+        pass
+    return None
 
 
 def _rel_source(f: Path) -> str:
-    for base, prefix in ((REPO_DIR, ""), (PDF_UPLOAD_DIR, "uploaded_pdfs/")):
+    for base, prefix in ((REPO_DIR, ""), (COURSES_DIR, "")):
         try:
             return prefix + str(f.relative_to(base))
         except ValueError:
@@ -53,14 +70,21 @@ def collect_files() -> list[Path]:
     if inc.exists():
         files.extend(sorted(inc.rglob("*.md")))
 
-    # 4) PDFs anywhere in the repo (converted to markdown via `marker`)
+    # 4) PDFs anywhere in the repo
     files.extend(sorted(REPO_DIR.rglob("*.pdf")))
 
-    # 5) PDFs uploaded via the ingest web UI
-    if PDF_UPLOAD_DIR.exists():
-        files.extend(sorted(PDF_UPLOAD_DIR.rglob("*.pdf")))
+    # 5) PDFs uploaded via the ingest web UI (course-scoped)
+    if COURSES_DIR.exists():
+        files.extend(sorted(COURSES_DIR.rglob("*.pdf")))
 
     return files
+
+
+def list_courses() -> list[str]:
+    """Return sorted list of existing course folder names."""
+    if not COURSES_DIR.exists():
+        return []
+    return sorted([p.name for p in COURSES_DIR.iterdir() if p.is_dir()])
 
 
 def _manifest_path() -> Path:
@@ -181,20 +205,27 @@ def main(force_full: bool = False):
             to_delete_ids.extend(prior.get("chunk_ids", []))
 
         new_ids = [_chunk_id(rel, i) for i in range(len(chunks))]
+        course = _course_for(f)
         for i, c in enumerate(chunks):
+            meta: dict = {
+                "source": c.get("source", rel),
+                "heading": c.get("title", ""),
+                "chunk_index": i,
+            }
+            if course:
+                meta["course"] = course
             to_upsert_docs.append(
                 Document(
                     page_content=c["text"],
-                    metadata={
-                        "source": c.get("source", rel),
-                        "heading": c.get("title", ""),
-                        "chunk_index": i,
-                    },
+                    metadata=meta,
                 )
             )
             to_upsert_ids.append(new_ids[i])
 
-        sources[rel] = {"hash": content_hash, "chunk_ids": new_ids}
+        entry: dict = {"hash": content_hash, "chunk_ids": new_ids}
+        if course:
+            entry["course"] = course
+        sources[rel] = entry
 
     # Sources that used to exist but were removed (deleted file / PDF removed via UI)
     removed_sources = set(sources.keys()) - seen_sources

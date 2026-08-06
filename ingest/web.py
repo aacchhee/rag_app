@@ -15,14 +15,15 @@ import sys
 import threading
 import traceback
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from flask import Flask, Response, jsonify, request
 from werkzeug.utils import secure_filename
 
-from ingest.ingest import _load_manifest, PDF_UPLOAD_DIR, main as run_ingest
+from ingest.ingest import _load_manifest, COURSES_DIR, list_courses, main as run_ingest
 
 # --- Event history (JSONL) ---
-HISTORY_FILE = PDF_UPLOAD_DIR.parent / "ingest_history.jsonl"
+HISTORY_FILE = COURSES_DIR.parent / "ingest_history.jsonl"
 _MAX_HISTORY_RETENTION_DAYS = 90
 
 
@@ -38,6 +39,7 @@ def _log_event(event_type: str, **extra) -> None:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except OSError:
         pass
+
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB per upload
@@ -157,6 +159,7 @@ def list_sources():
             "source": src,
             "chunks": len(meta.get("chunk_ids", [])),
             "hash": meta.get("hash", "")[:16] + "…",
+            "course": meta.get("course"),
         }
         for src, meta in sorted(sources.items())
     ]
@@ -188,11 +191,65 @@ def trigger():
     return jsonify({"started": True, "force_full": force_full})
 
 
+# --- Courses ---
+
+@app.get("/admin/courses")
+def get_courses():
+    _bump_activity()
+    courses = list_courses()
+    return jsonify(courses)
+
+
+@app.post("/admin/courses")
+def create_course():
+    _bump_activity()
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "course name required"}), 400
+    safe = secure_filename(name)
+    if safe != name or not safe:
+        return jsonify({"error": "invalid course name"}), 400
+    target = COURSES_DIR / safe
+    target.mkdir(parents=True, exist_ok=True)
+    return jsonify({"created": safe})
+
+
+@app.delete("/admin/courses/<path:name>")
+def delete_course(name):
+    _bump_activity()
+    safe = secure_filename(name)
+    target = COURSES_DIR / safe
+    if not safe or not target.is_dir():
+        return jsonify({"error": "not found"}), 404
+    # Only delete if empty
+    files = list(target.rglob("*"))
+    if any(p.is_file() for p in files):
+        return jsonify({"error": "course is not empty"}), 400
+    try:
+        target.rmdir()
+        return jsonify({"deleted": safe})
+    except OSError:
+        return jsonify({"error": "could not delete"}), 500
+
+
+# --- PDFs (course-scoped) ---
+
+def _course_upload_dir(course: str | None) -> Path:
+    if course:
+        return COURSES_DIR / secure_filename(course)
+    return COURSES_DIR  # fallback
+
+
 @app.get("/pdfs")
 def list_pdfs():
     _bump_activity()
-    PDF_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    return jsonify(sorted(p.name for p in PDF_UPLOAD_DIR.glob("*.pdf")))
+    course = (request.args.get("course") or "").strip()
+    d = _course_upload_dir(course) if course else COURSES_DIR
+    if not d.exists():
+        return jsonify([])
+    pdfs = sorted(p.name for p in d.rglob("*.pdf"))
+    return jsonify(pdfs)
 
 
 @app.post("/pdfs")
@@ -211,16 +268,20 @@ def upload_pdf():
     if head != b"%PDF-":
         return jsonify({"error": "file does not look like a PDF"}), 400
 
-    PDF_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    file.save(PDF_UPLOAD_DIR / filename)
-    return jsonify({"saved": filename})
+    course = (request.form.get("course") or "").strip()
+    target_dir = _course_upload_dir(course) if course else COURSES_DIR / "uncategorized"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    file.save(target_dir / filename)
+    return jsonify({"saved": filename, "course": course or "uncategorized"})
 
 
 @app.delete("/pdfs/<path:filename>")
 def delete_pdf(filename):
     _bump_activity()
     safe_name = secure_filename(filename)
-    target = PDF_UPLOAD_DIR / safe_name
+    course = (request.args.get("course") or "").strip()
+    target_dir = _course_upload_dir(course) if course else COURSES_DIR / "uncategorized"
+    target = target_dir / safe_name
     if safe_name and target.is_file() and target.suffix.lower() == ".pdf":
         target.unlink()
         return jsonify({"deleted": safe_name})
@@ -249,13 +310,29 @@ _PAGE = """<!doctype html>
                     padding: 0.4rem 0.6rem; border-bottom: 1px solid #ddd; }
   ul#pdf-list li button { font-size: 0.85rem; padding: 0.2rem 0.6rem; }
   #upload-msg { margin-top: 0.5rem; font-size: 0.9rem; }
+  .course-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
+  .course-row input { font-size: 1rem; padding: 0.35rem 0.5rem; flex: 1; }
+  .course-row button { font-size: 0.9rem; }
+  #course-list { list-style: none; padding: 0; }
+  #course-list li { display: flex; align-items: center; justify-content: space-between;
+                    padding: 0.4rem 0.6rem; border-bottom: 1px solid #eee; }
+  #course-select { font-size: 1rem; padding: 0.35rem 0.5rem; }
 </style>
 </head>
 <body>
   <h1>Ingest</h1>
 
-  <h2>PDFs</h2>
-  <p>Uploaded PDFs are converted to markdown via <code>marker</code> and included in the next ingest run.</p>
+  <h2>Courses</h2>
+  <p>Create a course folder. Uploaded PDFs go into the selected course.</p>
+  <div class="course-row">
+    <input type="text" id="new-course" placeholder="e.g. ma1101">
+    <button onclick="createCourse()">Create</button>
+  </div>
+  <ul id="course-list"></ul>
+
+  <h2>Upload PDF</h2>
+  <p>Select a course, then upload a PDF. It will be ingested into that course.</p>
+  <select id="course-select"><option value="">-- select course --</option></select><br><br>
   <input type="file" id="pdf-file" accept="application/pdf">
   <button onclick="uploadPdf()">Upload</button>
   <div id="upload-msg"></div>
@@ -277,6 +354,7 @@ _PAGE = """<!doctype html>
       <tr style="border-bottom: 2px solid #ccc; text-align: left;">
         <th style="padding: 0.4rem;">Source</th>
         <th style="padding: 0.4rem; width: 80px;">Chunks</th>
+        <th style="padding: 0.4rem; width: 100px;">Course</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -290,9 +368,65 @@ const pdfFileEl = document.getElementById('pdf-file');
 const pdfListEl = document.getElementById('pdf-list');
 const uploadMsgEl = document.getElementById('upload-msg');
 const forceFullEl = document.getElementById('force-full');
+const courseSelect = document.getElementById('course-select');
+const courseListEl = document.getElementById('course-list');
+const newCourseEl = document.getElementById('new-course');
+
+async function loadCourses() {
+  const res = await fetch('/admin/courses');
+  const names = await res.json();
+  courseListEl.innerHTML = '';
+  courseSelect.innerHTML = '<option value="">-- select course --</option>';
+  for (const name of names) {
+    const li = document.createElement('li');
+    const label = document.createElement('span');
+    label.textContent = name;
+    const delBtn = document.createElement('button');
+    delBtn.textContent = 'Delete';
+    delBtn.onclick = () => deleteCourse(name);
+    li.appendChild(label);
+    li.appendChild(delBtn);
+    courseListEl.appendChild(li);
+
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    courseSelect.appendChild(opt);
+  }
+}
+
+async function createCourse() {
+  const name = newCourseEl.value.trim();
+  if (!name) return;
+  const res = await fetch('/admin/courses', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  const body = await res.json();
+  if (!res.ok) {
+    alert(body.error || 'Failed');
+    return;
+  }
+  newCourseEl.value = '';
+  loadCourses();
+}
+
+async function deleteCourse(name) {
+  if (!confirm('Delete course ' + name + '? Only works if empty.')) return;
+  const res = await fetch('/admin/courses/' + encodeURIComponent(name), { method: 'DELETE' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    alert(body.error || 'Failed');
+    return;
+  }
+  loadCourses();
+}
 
 async function loadPdfs() {
-  const res = await fetch('/pdfs');
+  const course = courseSelect.value;
+  const qs = course ? '?course=' + encodeURIComponent(course) : '';
+  const res = await fetch('/pdfs' + qs);
   const names = await res.json();
   pdfListEl.innerHTML = '';
   for (const name of names) {
@@ -310,28 +444,37 @@ async function loadPdfs() {
 
 async function uploadPdf() {
   const file = pdfFileEl.files[0];
+  const course = courseSelect.value;
+  if (!course) {
+    uploadMsgEl.textContent = 'Please select a course first.';
+    return;
+  }
   if (!file) {
     uploadMsgEl.textContent = 'Please select a PDF file first.';
     return;
   }
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('course', course);
   const res = await fetch('/pdfs', { method: 'POST', body: formData });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     uploadMsgEl.textContent = 'Error: ' + (body.error || res.statusText);
     return;
   }
-  uploadMsgEl.textContent = body.saved + ' uploaded.';
+  uploadMsgEl.textContent = body.saved + ' uploaded to ' + body.course + '.';
   pdfFileEl.value = '';
   loadPdfs();
 }
 
 async function deletePdf(name) {
-  await fetch('/pdfs/' + encodeURIComponent(name), { method: 'DELETE' });
+  const course = courseSelect.value;
+  const qs = course ? '?course=' + encodeURIComponent(course) : '';
+  await fetch('/pdfs/' + encodeURIComponent(name) + qs, { method: 'DELETE' });
   loadPdfs();
 }
 
+loadCourses();
 loadPdfs();
 
 async function loadSources() {
@@ -356,8 +499,12 @@ async function loadSources() {
       const tdChunks = document.createElement('td');
       tdChunks.style.padding = '0.4rem';
       tdChunks.textContent = item.chunks;
+      const tdCourse = document.createElement('td');
+      tdCourse.style.padding = '0.4rem';
+      tdCourse.textContent = item.course || '-';
       tr.appendChild(tdSrc);
       tr.appendChild(tdChunks);
+      tr.appendChild(tdCourse);
       tbody.appendChild(tr);
     }
   } catch (e) {

@@ -10,6 +10,7 @@ from werkzeug.exceptions import HTTPException
 from config import Config
 from cleanup import sanitize_llm_answer, sanitize_llm_text
 from ingest.embed import embed_query
+from ingest.ingest import list_courses
 from log_utils import current_request_id, preview_text
 from rag.retriever import Retriever
 from rag.llm import chat_completion, chat_completion_stream
@@ -84,6 +85,7 @@ def _payload_summary(
     chat_mode: bool | None = None,
     history: list | None = None,
     top_k = None,
+    course: str | None = None,
 ) -> str:
     parts = [f"q_len={len(q)}", f"q={preview_text(q, 120)!r}"]
     if include_extra is not None:
@@ -98,6 +100,8 @@ def _payload_summary(
         parts.append(f"history_turns={len(history)}")
     if top_k is not None:
         parts.append(f"top_k={top_k}")
+    if course is not None:
+        parts.append(f"course={course}")
     return " ".join(parts)
 
 
@@ -340,6 +344,8 @@ def ask():
     if top_k <= 0:
         return jsonify(error="top_k must be positive", request_id=request_id), 400
 
+    course = (data.get("course") or "").strip() or None
+
     app.logger.info(
         "[req:%s] /ask payload %s",
         request_id,
@@ -349,6 +355,7 @@ def ask():
             extra_mode=extra_mode,
             chat_model=chat_model,
             top_k=top_k,
+            course=course,
         ),
     )
 
@@ -357,7 +364,7 @@ def ask():
     # 1) Retrieve from notes
     retrieval_started = time.perf_counter()
     q_emb = embed_query(q)
-    hits = retriever.search(q_emb, top_k=top_k, log_hits=True)
+    hits = retriever.search(q_emb, top_k=top_k, log_hits=True, course=course)
     sources, source_blocks = render_sources(hits)
     retrieval_coverage = detect_coverage(hits)
 
@@ -516,6 +523,8 @@ def ask_stream():
     if history and len(history) > MAX_CHAT_TURNS:
         history = history[-MAX_CHAT_TURNS:]
 
+    course = (data.get("course") or "").strip() or None
+
     app.logger.info(
         "[req:%s] /ask-stream payload %s",
         request_id,
@@ -527,6 +536,7 @@ def ask_stream():
             chat_mode=chat_mode,
             history=history,
             top_k=top_k,
+            course=course,
         ),
     )
 
@@ -550,7 +560,7 @@ def ask_stream():
 
         retrieval_started = time.perf_counter()
         q_emb = embed_query(q)
-        hits = retriever.search(q_emb, top_k=top_k, log_hits=True)
+        hits = retriever.search(q_emb, top_k=top_k, log_hits=True, course=course)
         sources, source_blocks = render_sources(hits)
         retrieval_coverage = detect_coverage(hits)
 
@@ -970,6 +980,11 @@ def assess_answer():
         yield _sse("done", {"request_id": request_id, "chat_model": chat_model, "ok": True})
 
     return _stream_response(generate())
+
+
+@app.get("/courses")
+def get_courses():
+    return jsonify(list_courses())
 
 
 @app.get("/status-page")

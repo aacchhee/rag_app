@@ -9,6 +9,7 @@ from typing import List
 
 import numpy as np
 from qdrant_client import QdrantClient
+from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from config import Config
 from log_utils import current_request_id
@@ -83,7 +84,7 @@ class Retriever:
         return self._ready
 
     def search(
-        self, query_vec: np.ndarray, top_k: int, *, log_hits: bool = True
+        self, query_vec: np.ndarray, top_k: int, *, log_hits: bool = True, course: str | None = None
     ) -> List[Hit]:
         if not self._ensure_ready():
             if log_hits:
@@ -99,10 +100,22 @@ class Retriever:
 
         if log_hits:
             logger.info(
-                "[req:%s] [retrieve] top_k=%d vec_dim=%d",
+                "[req:%s] [retrieve] top_k=%d vec_dim=%d course=%s",
                 current_request_id(),
                 top_k,
                 len(q),
+                course or "-",
+            )
+
+        q_filter = None
+        if course:
+            q_filter = Filter(
+                must=[
+                    FieldCondition(
+                        key="metadata.course",
+                        match=MatchValue(value=course),
+                    )
+                ]
             )
 
         try:
@@ -110,15 +123,17 @@ class Retriever:
                 collection_name=self.collection,
                 query=q.tolist(),
                 limit=top_k,
+                query_filter=q_filter,
                 with_payload=True,
             ).points
         except Exception:
             logger.exception(
-                "[req:%s] [retrieve] query_points failed collection=%s top_k=%d vec_dim=%d",
+                "[req:%s] [retrieve] query_points failed collection=%s top_k=%d vec_dim=%d course=%s",
                 current_request_id(),
                 self.collection,
                 top_k,
                 len(q),
+                course or "-",
             )
             raise
 
