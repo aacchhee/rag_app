@@ -43,8 +43,7 @@
         <span id="status" class="muted"></span>
       </div>
 
-      <!-- Chat body: messages + right sidebar -->
-      <div class="chat-body">
+      <div class="chat-main">
         <div class="messages-area" id="messagesArea">
           <div id="welcome" style="display:flex; align-items:center; justify-content:center; flex:1; height:100%;">
             <div style="text-align:center; color:#999;">
@@ -97,72 +96,72 @@
           </div>
         </div>
 
-        <!-- Right sidebar: practice problem (chat mode) -->
-        <div class="right-sidebar collapsed" id="rightSidebar">
-          <div class="right-sidebar-header">
-            <h2 class="right-sidebar-title">Practice Problem</h2>
-          </div>
-          <div class="right-sidebar-welcome" id="rightSidebarWelcome">
-            Click "Problem" to generate a practice problem from this conversation.
-          </div>
-          <div id="rightProblemContent" class="problem-box" style="display:none;"></div>
-
-          <div id="rightAnswerInputArea" class="answer-input-area" style="display:none;">
-            <label for="rightStudentAnswer">Your answer:</label>
-            <textarea id="rightStudentAnswer" class="answer-input"
-              placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
-            <div class="row">
-              <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
-              <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
-              <button id="rightNewProblemBtn" class="new-problem-btn" type="button">New problem</button>
-            </div>
+        <!-- Sticky input bar at bottom -->
+        <div class="input-bar">
+          <div class="input-row">
+            <textarea id="q" placeholder="Ask something… (math is OK)" rows="1"></textarea>
+            <button id="askBtn" type="button">Ask</button>
+            <button id="problemBtn" class="problem-btn" type="button" style="display:none">Problem</button>
           </div>
 
-          <h3 id="rightGeneratedAnswerTitle" class="box-title" style="display:none;">Answer</h3>
-          <div id="rightGeneratedAnswerBox" class="generated-answer-box answer" style="display:none;"></div>
-          <h3 id="rightAssessmentTitle" class="box-title" style="display:none;">Assessment</h3>
-          <div id="rightAssessmentBox" class="assessment-box" style="display:none;"></div>
-        </div>
-        <button class="right-sidebar-toggle" id="rightSidebarToggle" type="button">◀</button>
-      </div>
+          <div class="controls-row">
+            <label id="extraModeLabel">
+              Extra:
+              <select id="extraMode">
+                <option value="auto" selected>auto</option>
+                <option value="always">always</option>
+                <option value="never">never</option>
+              </select>
+            </label>
 
-      <!-- Sticky input bar at bottom -->
-      <div class="input-bar">
-        <div class="input-row">
-          <textarea id="q" placeholder="Ask something… (math is OK)" rows="1"></textarea>
-          <button id="askBtn" type="button">Ask</button>
-          <button id="problemBtn" class="problem-btn" type="button" style="display:none">Problem</button>
-        </div>
+            <label id="chatModelLabel">
+              Model:
+              <select id="chatModel" disabled>
+                <option value="">Loading...</option>
+              </select>
+            </label>
 
-        <div class="controls-row">
-          <label id="extraModeLabel">
-            Extra:
-            <select id="extraMode">
-              <option value="auto" selected>auto</option>
-              <option value="always">always</option>
-              <option value="never">never</option>
-            </select>
-          </label>
+            <label id="courseLabel">
+              Course:
+              <select id="courseSelect">
+                <option value="">All courses</option>
+              </select>
+            </label>
 
-          <label id="chatModelLabel">
-            Model:
-            <select id="chatModel" disabled>
-              <option value="">Loading...</option>
-            </select>
-          </label>
-
-          <label id="courseLabel">
-            Course:
-            <select id="courseSelect">
-              <option value="">All courses</option>
-            </select>
-          </label>
-
+          </div>
         </div>
       </div>
 
       <div id="err" class="err"></div>
     </div>
+
+    <!-- Right sidebar: practice problem (chat mode) -->
+    <div class="right-sidebar collapsed" id="rightSidebar">
+      <div class="right-sidebar-header">
+        <h2 class="right-sidebar-title">Practice Problem</h2>
+      </div>
+      <div class="right-sidebar-welcome" id="rightSidebarWelcome">
+        Click "Problem" to generate a practice problem from this conversation.
+      </div>
+      <div id="rightProblemContent" class="problem-box" style="display:none;"></div>
+
+      <div id="rightAnswerInputArea" class="answer-input-area" style="display:none;">
+        <label for="rightStudentAnswer">Your answer:</label>
+        <textarea id="rightStudentAnswer" class="answer-input"
+          placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
+        <div class="row">
+          <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
+          <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
+          <button id="rightNewProblemBtn" class="new-problem-btn" type="button">New problem</button>
+        </div>
+      </div>
+
+      <h3 id="rightGeneratedAnswerTitle" class="box-title" style="display:none;">Answer</h3>
+      <div id="rightGeneratedAnswerBox" class="generated-answer-box answer" style="display:none;"></div>
+      <h3 id="rightAssessmentTitle" class="box-title" style="display:none;">Assessment</h3>
+      <div id="rightAssessmentBox" class="assessment-box" style="display:none;"></div>
+    </div>
+    <button class="right-sidebar-toggle" id="rightSidebarToggle" type="button">◀</button>
   </div>
 
   <script>
