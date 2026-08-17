@@ -15,12 +15,16 @@ body {
   background: #fff;
   border-radius: 14px;
   box-shadow: 0 1px 6px rgba(0, 0, 0, .08);
-  padding: 18px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 48px);
+  overflow: hidden;
 }
 
 h1 {
-  font-size: 26px;
-  margin: 0 0 10px;
+  font-size: 22px;
+  margin: 0;
   line-height: 1.2;
 }
 
@@ -37,13 +41,16 @@ label {
 
 textarea {
   width: 100%;
-  min-height: 110px;
+  min-height: 48px;
+  max-height: 160px;
   resize: vertical;
   padding: 10px 12px;
   border: 1px solid #ddd;
   border-radius: 10px;
   font-size: 15px;
   box-sizing: border-box;
+  font-family: inherit;
+  line-height: 1.4;
 }
 
 .row {
@@ -75,9 +82,62 @@ button:disabled {
 }
 
 select {
-  font-size: 14px;
+  font-size: 13px;
+  padding: 2px 4px;
 }
 
+/* Scrollable messages area */
+.messages-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+}
+
+/* Sticky input bar at bottom */
+.input-bar {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  border-top: 1px solid #eee;
+  padding: 12px 18px 14px;
+  z-index: 10;
+}
+
+.input-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.input-row textarea {
+  flex: 1;
+}
+
+.input-row button {
+  align-self: stretch;
+  min-width: 64px;
+}
+
+.controls-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.controls-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: 500;
+  font-size: 13px;
+  color: #555;
+}
+
+/* Section / answer boxes */
 .section {
   margin-top: 16px;
 }
@@ -137,6 +197,7 @@ code {
   border-radius: 12px;
   overflow: hidden;
   margin-bottom: 16px;
+  flex-shrink: 0;
 }
 
 .nav-topbar a {
@@ -200,6 +261,7 @@ code {
   align-items: center;
   gap: 10px;
   margin-bottom: 10px;
+  flex-shrink: 0;
 }
 
 /* Markdown answer styling */
@@ -474,16 +536,14 @@ code {
   color: #999;
 }
 
-/* Hide single-question sections in chat mode */
-.single-mode-only {
-  /* controlled by JS */
+/* Single-question view */
+#singleView {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* Problem section */
-.problem-row {
-  margin-top: 8px;
-}
-
 .problem-btn {
   background: #2d5a27;
   font-size: 13px;
@@ -675,4 +735,10 @@ details > summary.box-title {
   font-size: 12px;
   line-height: 1.5;
   color: #333;
+}
+
+/* Status badge */
+#status {
+  font-size: 13px;
+  color: #888;
 }

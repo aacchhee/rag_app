@@ -42,97 +42,98 @@
 
     <div class="card">
       <div class="topbar">
-        <h1>Notes-first RAG Assistant with Qdrant</h1>
-      </div>
-
-      <div class="muted">
-        Backend: <code>/rag2/ask</code> — UI: <code>/rag2/</code>.
-      </div>
-
-      <label for="q">Question</label>
-      <textarea id="q" placeholder="Ask something… (math is OK)"></textarea>
-
-      <div class="row">
-        <button id="askBtn" type="button">Ask</button>
-        <button id="problemBtn" class="problem-btn" type="button" style="display:none">Problem</button>
-
-        <label class="muted" style="display:flex; align-items:center; gap:8px;" id="extraModeLabel">
-          Extra mode:
-          <select id="extraMode">
-            <option value="auto" selected>auto</option>
-            <option value="always">always</option>
-            <option value="never">never</option>
-          </select>
-        </label>
-
-        <label class="muted" style="display:flex; align-items:center; gap:8px;" id="chatModelLabel">
-          Model:
-          <select id="chatModel" style="max-width:280px;" disabled>
-            <option value="">Loading...</option>
-          </select>
-        </label>
-
-        <label class="muted" style="display:flex; align-items:center; gap:8px;" id="courseLabel">
-          Course:
-          <select id="courseSelect" style="max-width:200px;">
-            <option value="">All courses</option>
-          </select>
-        </label>
-
-        <label class="mode-toggle">
-          <input type="checkbox" id="chatMode"> Chat mode
-        </label>
-
+        <h1>Notes-first RAG</h1>
         <span id="status" class="muted"></span>
       </div>
 
-      <!-- Single question view -->
-      <div id="singleView" class="section">
-        <div id="singlePromptBubble" class="chat-bubble user single-question-bubble" style="display:none;">
-          <div class="chat-bubble-label">You</div>
-          <div id="singlePromptContent" class="chat-bubble-content"></div>
-        </div>
-
-        <h2 class="box-title">From the notes <span id="cov" class="pill" style="display:none;"></span></h2>
-        <div id="notes" class="answer"></div>
-
-        <div id="sources" class="sources"></div>
-
-        <details id="extraBox" style="display:none;">
-          <summary class="box-title">Extra context (not from notes)</summary>
-          <div id="extra" class="answer" style="margin-top:10px;"></div>
-        </details>
-
-        <!-- Problem section (appears after answer) -->
-        <div id="problemSection" class="problem-section" style="display:none;">
-          <h2 class="box-title">Practice Problem</h2>
-          <div id="problemContent" class="problem-box"></div>
-
-          <div id="answerInputArea" class="answer-input-area">
-            <label for="studentAnswer">Your answer:</label>
-            <textarea id="studentAnswer" class="answer-input"
-              placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
-            <div class="row">
-              <button id="submitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
-              <button id="showAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
-              <button id="newProblemBtn" class="new-problem-btn" type="button">New problem</button>
-            </div>
+      <!-- Scrollable messages / answers area -->
+      <div class="messages-area">
+        <!-- Single question view -->
+        <div id="singleView" class="section">
+          <div id="singlePromptBubble" class="chat-bubble user single-question-bubble" style="display:none;">
+            <div class="chat-bubble-label">You</div>
+            <div id="singlePromptContent" class="chat-bubble-content"></div>
           </div>
 
-          <h3 id="generatedAnswerTitle" class="box-title" style="display:none;">Answer</h3>
-          <div id="generatedAnswerBox" class="generated-answer-box answer"></div>
-          <h3 id="assessmentTitle" class="box-title" style="display:none;">Assessment</h3>
-          <div id="assessmentBox" class="assessment-box"></div>
+          <h2 class="box-title">From the notes <span id="cov" class="pill" style="display:none;"></span></h2>
+          <div id="notes" class="answer"></div>
+
+          <div id="sources" class="sources"></div>
+
+          <details id="extraBox" style="display:none;">
+            <summary class="box-title">Extra context (not from notes)</summary>
+            <div id="extra" class="answer" style="margin-top:10px;"></div>
+          </details>
+
+          <!-- Problem section (appears after answer) -->
+          <div id="problemSection" class="problem-section" style="display:none;">
+            <h2 class="box-title">Practice Problem</h2>
+            <div id="problemContent" class="problem-box"></div>
+
+            <div id="answerInputArea" class="answer-input-area">
+              <label for="studentAnswer">Your answer:</label>
+              <textarea id="studentAnswer" class="answer-input"
+                placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
+              <div class="row">
+                <button id="submitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
+                <button id="showAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
+                <button id="newProblemBtn" class="new-problem-btn" type="button">New problem</button>
+              </div>
+            </div>
+
+            <h3 id="generatedAnswerTitle" class="box-title" style="display:none;">Answer</h3>
+            <div id="generatedAnswerBox" class="generated-answer-box answer"></div>
+            <h3 id="assessmentTitle" class="box-title" style="display:none;">Assessment</h3>
+            <div id="assessmentBox" class="assessment-box"></div>
+          </div>
+        </div>
+
+        <!-- Chat conversation view -->
+        <div id="chatView" class="chat-container">
+          <div class="chat-header">
+            <h2>Conversation <span id="turnCount" class="chat-turn-count"></span></h2>
+            <button class="chat-clear" id="clearChat">New conversation</button>
+          </div>
+          <div class="chat-scroll" id="chatScroll"></div>
         </div>
       </div>
 
-      <!-- Chat conversation view -->
-      <div id="chatView" class="chat-container">
-        <div class="chat-header">
-          <h2>Conversation <span id="turnCount" class="chat-turn-count"></span></h2>
-          <button class="chat-clear" id="clearChat">New conversation</button>
+      <!-- Sticky input bar at bottom -->
+      <div class="input-bar">
+        <div class="input-row">
+          <textarea id="q" placeholder="Ask something… (math is OK)" rows="1"></textarea>
+          <button id="askBtn" type="button">Ask</button>
+          <button id="problemBtn" class="problem-btn" type="button" style="display:none">Problem</button>
         </div>
-        <div class="chat-scroll" id="chatScroll"></div>
+
+        <div class="controls-row">
+          <label id="extraModeLabel">
+            Extra:
+            <select id="extraMode">
+              <option value="auto" selected>auto</option>
+              <option value="always">always</option>
+              <option value="never">never</option>
+            </select>
+          </label>
+
+          <label id="chatModelLabel">
+            Model:
+            <select id="chatModel" disabled>
+              <option value="">Loading...</option>
+            </select>
+          </label>
+
+          <label id="courseLabel">
+            Course:
+            <select id="courseSelect">
+              <option value="">All courses</option>
+            </select>
+          </label>
+
+          <label class="mode-toggle">
+            <input type="checkbox" id="chatMode"> Chat mode
+          </label>
+        </div>
       </div>
 
       <details class="debug-box">
