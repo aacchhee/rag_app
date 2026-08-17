@@ -137,6 +137,7 @@
 
     <!-- Right sidebar: practice problem (chat mode) -->
     <div class="right-sidebar collapsed" id="rightSidebar">
+      <div class="resize-grip" id="rightSidebarGrip"></div>
       <div class="right-sidebar-header">
         <h2 class="right-sidebar-title">Practice Problems</h2>
       </div>
@@ -592,10 +593,14 @@
 
     function openRightSidebar() {
       $("rightSidebar").classList.remove("collapsed");
+      syncRightTogglePosition();
     }
 
     function closeRightSidebar() {
-      $("rightSidebar").classList.add("collapsed");
+      var sidebar = $("rightSidebar");
+      sidebar.classList.add("collapsed");
+      sidebar.style.width = "";
+      syncRightTogglePosition();
     }
 
     // --- Problem tabs ---
@@ -1571,7 +1576,62 @@
       $("rightSidebarToggle").addEventListener("click", function () {
         $("rightSidebar").classList.toggle("collapsed");
         $("rightSidebarToggle").textContent = $("rightSidebar").classList.contains("collapsed") ? "◀" : "▶";
+        // Clear stale inline width when expanding so default width applies;
+        // also sync toggle position
+        if (!$("rightSidebar").classList.contains("collapsed")) {
+          $("rightSidebar").style.width = "";
+        }
+        syncRightTogglePosition();
       });
+
+      function syncRightTogglePosition() {
+        var sidebar = $("rightSidebar");
+        var toggle = $("rightSidebarToggle");
+        if (sidebar.classList.contains("collapsed")) {
+          toggle.style.left = "auto";
+          toggle.style.right = "12px";
+          return;
+        }
+        var rect = sidebar.getBoundingClientRect();
+        toggle.style.left = (rect.left - toggle.offsetWidth - 8) + "px";
+        toggle.style.right = "auto";
+      }
+
+      // Custom left-edge resize (native resize handle is always right side)
+      (function setupResizeGrip() {
+        var grip = $("rightSidebarGrip");
+        var sidebar = $("rightSidebar");
+        var isDragging = false;
+        var startX = 0;
+        var startWidth = 0;
+
+        grip.addEventListener("mousedown", function (e) {
+          if (sidebar.classList.contains("collapsed")) return;
+          isDragging = true;
+          startX = e.clientX;
+          startWidth = sidebar.getBoundingClientRect().width;
+          document.body.style.cursor = "col-resize";
+          document.body.style.userSelect = "none";
+          e.preventDefault();
+        });
+
+        window.addEventListener("mousemove", function (e) {
+          if (!isDragging) return;
+          var delta = startX - e.clientX; // dragging left = wider
+          var newWidth = startWidth + delta;
+          newWidth = Math.max(200, Math.min(500, newWidth));
+          sidebar.style.width = newWidth + "px";
+          syncRightTogglePosition();
+        });
+
+        window.addEventListener("mouseup", function () {
+          if (isDragging) {
+            isDragging = false;
+            document.body.style.cursor = "";
+            document.body.style.userSelect = "";
+          }
+        });
+      })();
 
       $("rightNewProblemBtn").addEventListener("click", generateProblem);
 
