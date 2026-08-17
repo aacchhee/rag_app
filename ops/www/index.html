@@ -138,28 +138,35 @@
     <!-- Right sidebar: practice problem (chat mode) -->
     <div class="right-sidebar collapsed" id="rightSidebar">
       <div class="right-sidebar-header">
-        <h2 class="right-sidebar-title">Practice Problem</h2>
+        <h2 class="right-sidebar-title">Practice Problems</h2>
       </div>
-      <div class="right-sidebar-welcome" id="rightSidebarWelcome">
-        Click "Problem" to generate a practice problem from this conversation.
-      </div>
-      <div id="rightProblemContent" class="problem-box" style="display:none;"></div>
+      <!-- Problem tabs -->
+      <div class="problem-tabs" id="problemTabs" style="display:none;"></div>
+      <!-- Scrollable content -->
+      <div class="right-sidebar-content" id="rightSidebarContent">
+        <div class="right-sidebar-welcome" id="rightSidebarWelcome">
+          Click "Problem" to generate a practice problem from this conversation.
+        </div>
+        <div id="rightProblemArea" style="display:none;">
+          <div id="rightProblemContent" class="problem-box"></div>
 
-      <div id="rightAnswerInputArea" class="answer-input-area" style="display:none;">
-        <label for="rightStudentAnswer">Your answer:</label>
-        <textarea id="rightStudentAnswer" class="answer-input"
-          placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
-        <div class="row">
-          <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
-          <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
-          <button id="rightNewProblemBtn" class="new-problem-btn" type="button">New problem</button>
+          <div id="rightAnswerInputArea" class="answer-input-area visible">
+            <label for="rightStudentAnswer">Your answer:</label>
+            <textarea id="rightStudentAnswer" class="answer-input"
+              placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
+            <div class="row">
+              <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
+              <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
+              <button id="rightNewProblemBtn" class="new-problem-btn" type="button">New problem</button>
+            </div>
+          </div>
+
+          <h3 id="rightGeneratedAnswerTitle" class="box-title" style="display:none;">Answer</h3>
+          <div id="rightGeneratedAnswerBox" class="generated-answer-box answer" style="display:none;"></div>
+          <h3 id="rightAssessmentTitle" class="box-title" style="display:none;">Assessment</h3>
+          <div id="rightAssessmentBox" class="assessment-box" style="display:none;"></div>
         </div>
       </div>
-
-      <h3 id="rightGeneratedAnswerTitle" class="box-title" style="display:none;">Answer</h3>
-      <div id="rightGeneratedAnswerBox" class="generated-answer-box answer" style="display:none;"></div>
-      <h3 id="rightAssessmentTitle" class="box-title" style="display:none;">Assessment</h3>
-      <div id="rightAssessmentBox" class="assessment-box" style="display:none;"></div>
     </div>
     <button class="right-sidebar-toggle" id="rightSidebarToggle" type="button">◀</button>
   </div>
@@ -368,8 +375,12 @@
     var mathRenderTimer = null;
     var lastSingleQuestion = ""; // last single-mode question shown above the answer
     var lastNotesAnswer = "";    // last notes answer (for problem context)
-    var currentProblemRaw = "";  // raw problem text from LLM
-    var currentGeneratedAnswerRaw = ""; // hidden answer key for assessment
+    var currentProblemRaw = "";  // raw problem text from LLM (active problem)
+    var currentGeneratedAnswerRaw = ""; // hidden answer key for assessment (active problem)
+
+    // Problems array for chat mode: [{problem, generated_answer, student_answer, assessment}, ...]
+    var problems = [];
+    var activeProblemIndex = -1;
 
     var MAX_TURNS = 20;
 
@@ -387,9 +398,9 @@
       } catch (e) { return []; }
     }
 
-    function saveConversation(id, title, history) {
+    function saveConversation(id, title, history, _problems) {
       try {
-        var entry = { id: id, title: title, updated: Date.now(), history: history };
+        var entry = { id: id, title: title, updated: Date.now(), history: history, problems: _problems || [] };
         localStorage.setItem(_convKey(id), JSON.stringify(entry));
         var ids = listConversationIds();
         if (ids.indexOf(id) === -1) {
@@ -488,14 +499,16 @@
       rawExtra = "";
       currentProblemRaw = "";
       currentGeneratedAnswerRaw = "";
+      problems = [];
+      activeProblemIndex = -1;
       currentConvId = null;
       renderChatConversation();
       renderSidebar();
       resetRightSidebarProblemUI();
       resetRightSidebarAssessmentUI();
+      renderProblemTabs();
       $("rightSidebarWelcome").style.display = "flex";
-      $("rightProblemContent").style.display = "none";
-      $("rightAnswerInputArea").classList.remove("visible");
+      $("rightProblemArea").style.display = "none";
       $("rightStudentAnswer").value = "";
       $("welcome").style.display = "flex";
       $("problemBtn").style.display = "none";
@@ -507,16 +520,21 @@
       chatHistory = conv.history;
       rawNotes = "";
       rawExtra = "";
+      problems = Array.isArray(conv.problems) ? conv.problems : [];
+      activeProblemIndex = -1;
       currentProblemRaw = "";
       currentGeneratedAnswerRaw = "";
       currentConvId = id;
       $("welcome").style.display = "none";
-      resetRightSidebarProblemUI();
       resetRightSidebarAssessmentUI();
-      $("rightSidebarWelcome").style.display = "flex";
-      $("rightProblemContent").style.display = "none";
-      $("rightAnswerInputArea").classList.remove("visible");
-      $("rightStudentAnswer").value = "";
+      renderProblemTabs();
+      if (problems.length > 0) {
+        activeProblemIndex = problems.length - 1;
+        renderActiveProblem();
+      } else {
+        $("rightSidebarWelcome").style.display = "flex";
+        $("rightProblemArea").style.display = "none";
+      }
       renderChatConversation();
       renderSidebar();
     }
@@ -527,7 +545,7 @@
         currentConvId = "conv_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
       }
       var title = conversationTitleFromHistory(chatHistory);
-      saveConversation(currentConvId, title, chatHistory);
+      saveConversation(currentConvId, title, chatHistory, problems);
       renderSidebar();
     }
 
@@ -578,6 +596,101 @@
 
     function closeRightSidebar() {
       $("rightSidebar").classList.add("collapsed");
+    }
+
+    // --- Problem tabs ---
+    function renderProblemTabs() {
+      var tabsEl = $("problemTabs");
+      tabsEl.innerHTML = "";
+      if (problems.length === 0) {
+        tabsEl.style.display = "none";
+        return;
+      }
+      tabsEl.style.display = "flex";
+      for (var i = 0; i < problems.length; i++) {
+        var btn = document.createElement("button");
+        btn.className = "problem-tab";
+        btn.textContent = "Problem " + (i + 1);
+        if (i === activeProblemIndex) btn.classList.add("active");
+        btn.onclick = (function (idx) {
+          return function () {
+            activeProblemIndex = idx;
+            renderProblemTabs();
+            renderActiveProblem();
+          };
+        })(i);
+        tabsEl.appendChild(btn);
+      }
+    }
+
+    function renderActiveProblem() {
+      if (activeProblemIndex < 0 || activeProblemIndex >= problems.length) return;
+      var prob = problems[activeProblemIndex];
+      currentProblemRaw = prob.problem;
+      currentGeneratedAnswerRaw = prob.generated_answer || "";
+
+      $("rightSidebarWelcome").style.display = "none";
+      $("rightProblemArea").style.display = "block";
+      $("rightProblemContent").innerHTML = renderMarkdown(currentProblemRaw);
+      $("rightProblemContent").classList.remove("streaming-cursor");
+      $("rightAnswerInputArea").classList.add("visible");
+      $("rightStudentAnswer").value = prob.student_answer || "";
+
+      // Generated answer
+      if (prob.generated_answer_shown) {
+        $("rightGeneratedAnswerTitle").style.display = "block";
+        $("rightGeneratedAnswerBox").style.display = "block";
+        $("rightGeneratedAnswerBox").innerHTML = renderMarkdown(prob.generated_answer || "");
+        $("rightGeneratedAnswerBox").classList.add("visible");
+        $("rightShowAnswerBtn").textContent = "Hide answer";
+        $("rightShowAnswerBtn").disabled = false;
+      } else {
+        $("rightGeneratedAnswerTitle").style.display = "none";
+        $("rightGeneratedAnswerBox").classList.remove("visible");
+        $("rightGeneratedAnswerBox").style.display = "none";
+        $("rightGeneratedAnswerBox").innerHTML = "";
+        $("rightShowAnswerBtn").textContent = "Show answer";
+        $("rightShowAnswerBtn").disabled = !currentGeneratedAnswerRaw.trim();
+      }
+
+      // Assessment
+      if (prob.assessment) {
+        $("rightAssessmentTitle").style.display = "block";
+        $("rightAssessmentBox").style.display = "block";
+        $("rightAssessmentBox").innerHTML = renderMarkdown(prob.assessment);
+        $("rightAssessmentBox").classList.add("visible");
+      } else {
+        $("rightAssessmentTitle").style.display = "none";
+        $("rightAssessmentBox").classList.remove("visible");
+        $("rightAssessmentBox").style.display = "none";
+        $("rightAssessmentBox").innerHTML = "";
+      }
+
+      typesetMath();
+    }
+
+    function updateActiveProblemState() {
+      if (activeProblemIndex < 0 || activeProblemIndex >= problems.length) return;
+      var prob = problems[activeProblemIndex];
+      prob.problem = currentProblemRaw;
+      prob.generated_answer = currentGeneratedAnswerRaw;
+      prob.student_answer = $("rightStudentAnswer").value;
+      if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, problems);
+    }
+
+    function addProblem(problemText, generatedAnswer) {
+      var prob = {
+        problem: problemText,
+        generated_answer: generatedAnswer || "",
+        student_answer: "",
+        assessment: "",
+        generated_answer_shown: false
+      };
+      problems.push(prob);
+      activeProblemIndex = problems.length - 1;
+      renderProblemTabs();
+      renderActiveProblem();
+      if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, problems);
     }
 
     // --- Shared problem / answer / assessment cores ---
@@ -676,6 +789,7 @@
         $(targetBoxId).innerHTML = renderMarkdown(assessRaw);
         await typesetMath();
         setStatus("Done.");
+        return assessRaw;
       } catch (e) {
         logDebug("Assess request failed", { label: label, error: String(e) });
         setError(String(e));
@@ -716,6 +830,11 @@
         { problem: currentProblemRaw, conversation_context: buildConversationContext() },
         "rightSubmitAnswerBtn", "rightShowAnswerBtn", "right sidebar"
       );
+      // Save generated answer to active problem
+      if (activeProblemIndex >= 0 && activeProblemIndex < problems.length) {
+        problems[activeProblemIndex].generated_answer = currentGeneratedAnswerRaw;
+        updateActiveProblemState();
+      }
     }
 
     async function submitRightAnswer() {
@@ -723,11 +842,21 @@
       var studentAnswer = $("rightStudentAnswer").value.trim();
       if (!studentAnswer) { setError("Please enter your answer."); return; }
       if (!currentGeneratedAnswerRaw.trim()) { setError("The generated answer is not ready yet. Please wait a moment."); return; }
-      await _submitAssessCore(studentAnswer, "rightAssessmentTitle", "rightAssessmentBox", "rightSubmitAnswerBtn", "right sidebar");
+      var assessRaw = await _submitAssessCore(studentAnswer, "rightAssessmentTitle", "rightAssessmentBox", "rightSubmitAnswerBtn", "right sidebar");
+      // Save assessment to active problem
+      if (assessRaw && activeProblemIndex >= 0 && activeProblemIndex < problems.length) {
+        problems[activeProblemIndex].assessment = assessRaw;
+        updateActiveProblemState();
+      }
     }
 
     function toggleRightGeneratedAnswer() {
       _toggleGeneratedAnswer("rightGeneratedAnswerBox", "rightGeneratedAnswerTitle", "rightShowAnswerBtn");
+      if (activeProblemIndex >= 0 && activeProblemIndex < problems.length) {
+        var box = $("rightGeneratedAnswerBox");
+        problems[activeProblemIndex].generated_answer_shown = box.classList.contains("visible");
+        updateActiveProblemState();
+      }
     }
 
     function toggleGeneratedAnswer() {
@@ -1032,9 +1161,9 @@
 
       if (isChatMode) {
         // Right sidebar flow for chat mode
-        resetRightSidebarProblemUI();
         resetRightSidebarAssessmentUI();
         $("rightSidebarWelcome").style.display = "none";
+        $("rightProblemArea").style.display = "block";
         $("rightProblemContent").style.display = "block";
         $("rightProblemContent").classList.add("streaming-cursor");
         $("rightAnswerInputArea").classList.remove("visible");
@@ -1144,6 +1273,7 @@
 
         if (isChatMode) {
           $("rightAnswerInputArea").classList.add("visible");
+          addProblem(currentProblemRaw); // saves to problems array + localStorage
           await calculateRightProblemAnswer();
         } else {
           $("answerInputArea").classList.add("visible");

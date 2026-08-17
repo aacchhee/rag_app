@@ -319,6 +319,14 @@ select {
   letter-spacing: 0.4px;
 }
 
+.right-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .right-sidebar-welcome {
   flex: 1;
   display: flex;
@@ -327,6 +335,36 @@ select {
   color: #aaa;
   font-size: 13px;
   text-align: center;
+  padding: 20px 0;
+}
+
+.problem-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ddd;
+}
+
+.problem-tab {
+  background: #eee;
+  color: #333;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.problem-tab:hover {
+  background: #e0e0e0;
+}
+
+.problem-tab.active {
+  background: #111;
+  color: #fff;
 }
 
 /* Sticky input bar at bottom */
