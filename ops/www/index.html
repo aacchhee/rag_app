@@ -1177,45 +1177,6 @@
       if (!currentGeneratedAnswerRaw.trim()) { setError("The generated answer is not ready yet. Please wait a moment."); return; }
       await _submitAssessCore(studentAnswer, "assessmentTitle", "assessmentBox", "submitAnswerBtn", "single mode");
     }
-            logDebug("Assess stream meta", data);
-            return;
-          }
-          if (event === "status") {
-            logDebug("Assess stream status", data);
-            return;
-          }
-          if (event === "token") {
-            assessRaw += data.content || "";
-            $("assessmentBox").innerHTML = renderMarkdown(assessRaw);
-            $("assessmentBox").classList.add("streaming-cursor");
-            clearTimeout(mathRenderTimer);
-            mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
-            return;
-          }
-          if (event === "error") {
-            logDebug("Assess stream error", data);
-            throw new Error((data && data.message ? data.message : "Assessment stream error") + (data && data.request_id ? " [request_id=" + data.request_id + "]" : ""));
-          }
-          if (event === "done") {
-            logDebug("Assess stream done", data);
-          }
-        });
-
-        // Final render
-        $("assessmentBox").classList.remove("streaming-cursor");
-        $("assessmentBox").innerHTML = renderMarkdown(assessRaw);
-
-        await typesetMath();
-        setStatus("Done.");
-
-      } catch (e) {
-        logDebug("Assess request failed", { error: String(e) });
-        setError(String(e));
-        setStatus("Error");
-      } finally {
-        $("submitAnswerBtn").disabled = false;
-      }
-    }
 
     // Main ask function
     async function ask() {
