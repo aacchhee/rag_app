@@ -101,7 +101,6 @@
         <div class="right-sidebar collapsed" id="rightSidebar">
           <div class="right-sidebar-header">
             <h2 class="right-sidebar-title">Practice Problem</h2>
-            <button class="right-sidebar-toggle" id="rightSidebarInnerToggle" type="button">▶</button>
           </div>
           <div class="right-sidebar-welcome" id="rightSidebarWelcome">
             Click "Problem" to generate a practice problem from this conversation.
@@ -124,6 +123,7 @@
           <h3 id="rightAssessmentTitle" class="box-title" style="display:none;">Assessment</h3>
           <div id="rightAssessmentBox" class="assessment-box" style="display:none;"></div>
         </div>
+        <button class="right-sidebar-toggle" id="rightSidebarToggle" type="button">◀</button>
       </div>
 
       <!-- Sticky input bar at bottom -->
@@ -1439,9 +1439,9 @@
       $("submitAnswerBtn").addEventListener("click", submitAnswer);
 
       // Right sidebar event listeners
-      $("rightSidebarInnerToggle").addEventListener("click", function () {
+      $("rightSidebarToggle").addEventListener("click", function () {
         $("rightSidebar").classList.toggle("collapsed");
-        $("rightSidebarInnerToggle").textContent = $("rightSidebar").classList.contains("collapsed") ? "◀" : "▶";
+        $("rightSidebarToggle").textContent = $("rightSidebar").classList.contains("collapsed") ? "◀" : "▶";
       });
 
       $("rightNewProblemBtn").addEventListener("click", generateProblem);
