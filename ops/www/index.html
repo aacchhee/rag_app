@@ -35,8 +35,13 @@
       </div>
 
       <!-- Scrollable messages / answers area -->
-      <div class="messages-area">
-        <!-- Single question view -->
+      <div class="messages-area" id="messagesArea">
+        <div id="welcome" style="display:flex; align-items:center; justify-content:center; flex:1; height:100%;">
+          <div style="text-align:center; color:#999;">
+            <div style="font-size:38px; margin-bottom:12px;">💬</div>
+            <div style="font-size:18px; font-weight:500;">What can I help with?</div>
+          </div>
+        </div>
         <div id="singleView" class="section">
           <div id="singlePromptBubble" class="chat-bubble user single-question-bubble" style="display:none;">
             <div class="chat-bubble-label">You</div>
@@ -118,16 +123,8 @@
             </select>
           </label>
 
-          <label class="mode-toggle">
-            <input type="checkbox" id="chatMode"> Chat mode
-          </label>
         </div>
       </div>
-
-      <details class="debug-box">
-        <summary>Debug log</summary>
-        <pre id="debugLog" class="debug-log"></pre>
-      </details>
 
       <div id="err" class="err"></div>
     </div>
@@ -330,7 +327,7 @@
     }
 
     // Streaming state
-    var isChatMode = false;
+    var isChatMode = true;
     var chatHistory = []; // [{question, answer}]
     var rawNotes = "";
     var rawExtra = "";
@@ -950,6 +947,9 @@
       resetGeneratedAnswerUI();
       resetAssessmentUI();
 
+      var welcome = $("welcome");
+      if (welcome) welcome.style.display = "none";
+
       // Hide problem section when asking new question
       $("problemSection").style.display = "none";
       $("problemSection").classList.remove("visible");
@@ -1171,10 +1171,7 @@
         logDebug("Chat model changed", { chatModel: getSelectedChatModel() || "(default)" });
       });
 
-      // Mode toggle
-      $("chatMode").addEventListener("change", function () {
-        switchMode(this.checked);
-      });
+      switchMode(true); // always chat mode
 
       // Clear chat
       $("clearChat").addEventListener("click", function () {
