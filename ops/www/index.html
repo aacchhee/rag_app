@@ -1555,10 +1555,17 @@
       renderSidebar();
       $("newConvBtn").addEventListener("click", startNewConversation);
 
+      function syncLeftSidebarVar() {
+        var isCollapsed = $("sidebar").classList.contains("collapsed");
+        $("sidebar").parentElement.style.setProperty("--ls-width", isCollapsed ? "0px" : "260px");
+      }
+
       $("sidebarToggle").addEventListener("click", function () {
         $("sidebar").classList.toggle("collapsed");
         $("sidebarToggle").textContent = $("sidebar").classList.contains("collapsed") ? "▶" : "◀";
+        syncLeftSidebarVar();
       });
+      syncLeftSidebarVar();
 
       // Problem generation
       $("problemBtn").addEventListener("click", generateProblem);
@@ -1619,7 +1626,7 @@
           if (!isDragging) return;
           var delta = startX - e.clientX; // dragging left = wider
           var newWidth = startWidth + delta;
-          newWidth = Math.max(200, Math.min(500, newWidth));
+          newWidth = Math.max(200, newWidth);
           sidebar.style.width = newWidth + "px";
           syncRightTogglePosition();
         });

@@ -11,7 +11,7 @@ body {
   gap: 16px;
   height: 100vh;
   box-sizing: border-box;
-  --rs-width: 520px;
+  --ls-width: 260px;
 }
 
 /* Sidebar */
@@ -259,7 +259,7 @@ select {
   background-color: #f7f7f8;
   border-left: solid black 2px;
   padding: 10px;
-  width: var(--rs-width);
+  width: calc((100vw - var(--ls-width) - 16px) / 2);
   min-width: 260px;
   flex-shrink: 0;
   display: flex;
