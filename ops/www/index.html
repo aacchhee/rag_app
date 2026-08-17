@@ -29,17 +29,17 @@
   <div class="wrap">
     <!-- Left sidebar: conversations -->
     <div class="sidebar" id="sidebar">
+      <h1 class="sidebar-title">Notes-first RAG</h1>
       <div class="sidebar-header">
         <h2>Conversations</h2>
         <button class="new-conv-btn" id="newConvBtn" type="button">New</button>
       </div>
       <ul class="conversations-list" id="conversationsList"></ul>
     </div>
-    <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Toggle sidebar">☰</button>
+    <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Toggle sidebar">◀</button>
 
     <div class="card">
       <div class="topbar">
-        <h1>Notes-first RAG</h1>
         <span id="status" class="muted"></span>
       </div>
 
@@ -48,7 +48,7 @@
         <div id="welcome" style="display:flex; align-items:center; justify-content:center; flex:1; height:100%;">
           <div style="text-align:center; color:#999;">
             <div style="font-size:38px; margin-bottom:12px;">💬</div>
-            <div style="font-size:18px; font-weight:500;">What can I help with?</div>
+            <div style="font-size:18px; font-weight:500;">Let's math!</div>
           </div>
         </div>
         <div id="singleView" class="section">
@@ -1320,7 +1320,7 @@
 
       $("sidebarToggle").addEventListener("click", function () {
         $("sidebar").classList.toggle("collapsed");
-        $("sidebarToggle").classList.toggle("visible");
+        $("sidebarToggle").textContent = $("sidebar").classList.contains("collapsed") ? "▶" : "◀";
       });
 
       // Problem generation
