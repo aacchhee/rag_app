@@ -28,13 +28,14 @@
 <body>
   <div class="wrap">
     <!-- Left sidebar: conversations -->
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <h2>Conversations</h2>
         <button class="new-conv-btn" id="newConvBtn" type="button">New</button>
       </div>
       <ul class="conversations-list" id="conversationsList"></ul>
     </div>
+    <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Toggle sidebar">☰</button>
 
     <div class="card">
       <div class="topbar">
@@ -531,7 +532,6 @@
       var scroll = $("chatScroll");
       if (chatHistory.length === 0) {
         scroll.innerHTML = '<div style="padding:30px;text-align:center;color:#aaa;">Start a conversation by asking a question.</div>';
-        $("turnCount").textContent = "";
         return;
       }
 
@@ -556,8 +556,6 @@
       }
 
       scroll.innerHTML = html;
-      $("turnCount").textContent = "(" + chatHistory.length + "/" + MAX_TURNS + " turns)";
-
       // Scroll to bottom
       scroll.scrollTop = scroll.scrollHeight;
       typesetMath();
@@ -785,7 +783,6 @@
         }
       }
 
-      $("turnCount").textContent = "(" + chatHistory.length + "/" + MAX_TURNS + " turns)";
     }
 
     // Mode switching
@@ -1320,6 +1317,11 @@
       switchMode(true); // always chat mode
       renderSidebar();
       $("newConvBtn").addEventListener("click", startNewConversation);
+
+      $("sidebarToggle").addEventListener("click", function () {
+        $("sidebar").classList.toggle("collapsed");
+        $("sidebarToggle").classList.toggle("visible");
+      });
 
       // Problem generation
       $("problemBtn").addEventListener("click", generateProblem);
