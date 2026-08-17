@@ -43,56 +43,86 @@
         <span id="status" class="muted"></span>
       </div>
 
-      <!-- Scrollable messages / answers area -->
-      <div class="messages-area" id="messagesArea">
-        <div id="welcome" style="display:flex; align-items:center; justify-content:center; flex:1; height:100%;">
-          <div style="text-align:center; color:#999;">
-            <div style="font-size:38px; margin-bottom:12px;">💬</div>
-            <div style="font-size:18px; font-weight:500;">Let's math!</div>
+      <!-- Chat body: messages + right sidebar -->
+      <div class="chat-body">
+        <div class="messages-area" id="messagesArea">
+          <div id="welcome" style="display:flex; align-items:center; justify-content:center; flex:1; height:100%;">
+            <div style="text-align:center; color:#999;">
+              <div style="font-size:38px; margin-bottom:12px;">💬</div>
+              <div style="font-size:18px; font-weight:500;">Let's math!</div>
+            </div>
           </div>
-        </div>
-        <div id="singleView" class="section">
-          <div id="singlePromptBubble" class="chat-bubble user single-question-bubble" style="display:none;">
-            <div class="chat-bubble-label">You</div>
-            <div id="singlePromptContent" class="chat-bubble-content"></div>
-          </div>
-
-          <h2 class="box-title">From the notes <span id="cov" class="pill" style="display:none;"></span></h2>
-          <div id="notes" class="answer"></div>
-
-          <div id="sources" class="sources"></div>
-
-          <details id="extraBox" style="display:none;">
-            <summary class="box-title">Extra context (not from notes)</summary>
-            <div id="extra" class="answer" style="margin-top:10px;"></div>
-          </details>
-
-          <!-- Problem section (appears after answer) -->
-          <div id="problemSection" class="problem-section" style="display:none;">
-            <h2 class="box-title">Practice Problem</h2>
-            <div id="problemContent" class="problem-box"></div>
-
-            <div id="answerInputArea" class="answer-input-area">
-              <label for="studentAnswer">Your answer:</label>
-              <textarea id="studentAnswer" class="answer-input"
-                placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
-              <div class="row">
-                <button id="submitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
-                <button id="showAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
-                <button id="newProblemBtn" class="new-problem-btn" type="button">New problem</button>
-              </div>
+          <div id="singleView" class="section">
+            <div id="singlePromptBubble" class="chat-bubble user single-question-bubble" style="display:none;">
+              <div class="chat-bubble-label">You</div>
+              <div id="singlePromptContent" class="chat-bubble-content"></div>
             </div>
 
-            <h3 id="generatedAnswerTitle" class="box-title" style="display:none;">Answer</h3>
-            <div id="generatedAnswerBox" class="generated-answer-box answer"></div>
-            <h3 id="assessmentTitle" class="box-title" style="display:none;">Assessment</h3>
-            <div id="assessmentBox" class="assessment-box"></div>
+            <h2 class="box-title">From the notes <span id="cov" class="pill" style="display:none;"></span></h2>
+            <div id="notes" class="answer"></div>
+
+            <div id="sources" class="sources"></div>
+
+            <details id="extraBox" style="display:none;">
+              <summary class="box-title">Extra context (not from notes)</summary>
+              <div id="extra" class="answer" style="margin-top:10px;"></div>
+            </details>
+
+            <!-- Problem section (single-mode, appears after answer) -->
+            <div id="problemSection" class="problem-section" style="display:none;">
+              <h2 class="box-title">Practice Problem</h2>
+              <div id="problemContent" class="problem-box"></div>
+
+              <div id="answerInputArea" class="answer-input-area">
+                <label for="studentAnswer">Your answer:</label>
+                <textarea id="studentAnswer" class="answer-input"
+                  placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
+                <div class="row">
+                  <button id="submitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
+                  <button id="showAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
+                  <button id="newProblemBtn" class="new-problem-btn" type="button">New problem</button>
+                </div>
+              </div>
+
+              <h3 id="generatedAnswerTitle" class="box-title" style="display:none;">Answer</h3>
+              <div id="generatedAnswerBox" class="generated-answer-box answer"></div>
+              <h3 id="assessmentTitle" class="box-title" style="display:none;">Assessment</h3>
+              <div id="assessmentBox" class="assessment-box"></div>
+            </div>
+          </div>
+
+          <!-- Chat conversation view -->
+          <div id="chatView" class="chat-container">
+            <div class="chat-scroll" id="chatScroll"></div>
           </div>
         </div>
 
-        <!-- Chat conversation view -->
-        <div id="chatView" class="chat-container">
-          <div class="chat-scroll" id="chatScroll"></div>
+        <!-- Right sidebar: practice problem (chat mode) -->
+        <div class="right-sidebar collapsed" id="rightSidebar">
+          <div class="right-sidebar-header">
+            <h2 class="right-sidebar-title">Practice Problem</h2>
+            <button class="right-sidebar-toggle" id="rightSidebarInnerToggle" type="button">▶</button>
+          </div>
+          <div class="right-sidebar-welcome" id="rightSidebarWelcome">
+            Click "Problem" to generate a practice problem from this conversation.
+          </div>
+          <div id="rightProblemContent" class="problem-box" style="display:none;"></div>
+
+          <div id="rightAnswerInputArea" class="answer-input-area" style="display:none;">
+            <label for="rightStudentAnswer">Your answer:</label>
+            <textarea id="rightStudentAnswer" class="answer-input"
+              placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
+            <div class="row">
+              <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
+              <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
+              <button id="rightNewProblemBtn" class="new-problem-btn" type="button">New problem</button>
+            </div>
+          </div>
+
+          <h3 id="rightGeneratedAnswerTitle" class="box-title" style="display:none;">Answer</h3>
+          <div id="rightGeneratedAnswerBox" class="generated-answer-box answer" style="display:none;"></div>
+          <h3 id="rightAssessmentTitle" class="box-title" style="display:none;">Assessment</h3>
+          <div id="rightAssessmentBox" class="assessment-box" style="display:none;"></div>
         </div>
       </div>
 
@@ -457,10 +487,19 @@
       chatHistory = [];
       rawNotes = "";
       rawExtra = "";
+      currentProblemRaw = "";
+      currentGeneratedAnswerRaw = "";
       currentConvId = null;
       renderChatConversation();
       renderSidebar();
+      resetRightSidebarProblemUI();
+      resetRightSidebarAssessmentUI();
+      $("rightSidebarWelcome").style.display = "flex";
+      $("rightProblemContent").style.display = "none";
+      $("rightAnswerInputArea").classList.remove("visible");
+      $("rightStudentAnswer").value = "";
       $("welcome").style.display = "flex";
+      $("problemBtn").style.display = "none";
     }
 
     function switchToConversation(id) {
@@ -469,8 +508,16 @@
       chatHistory = conv.history;
       rawNotes = "";
       rawExtra = "";
+      currentProblemRaw = "";
+      currentGeneratedAnswerRaw = "";
       currentConvId = id;
       $("welcome").style.display = "none";
+      resetRightSidebarProblemUI();
+      resetRightSidebarAssessmentUI();
+      $("rightSidebarWelcome").style.display = "flex";
+      $("rightProblemContent").style.display = "none";
+      $("rightAnswerInputArea").classList.remove("visible");
+      $("rightStudentAnswer").value = "";
       renderChatConversation();
       renderSidebar();
     }
@@ -499,32 +546,193 @@
       $("assessmentBox").innerHTML = "";
     }
 
-    function toggleGeneratedAnswer() {
-      setError("");
+    // --- Right sidebar helpers ---
+    function buildConversationContext() {
+      if (!chatHistory || !chatHistory.length) return "";
+      var lines = [];
+      for (var i = 0; i < chatHistory.length; i++) {
+        lines.push("Student: " + chatHistory[i].question);
+        lines.push("Assistant: " + chatHistory[i].answer);
+      }
+      return lines.join("\n");
+    }
 
+    function resetRightSidebarProblemUI() {
+      $("rightGeneratedAnswerTitle").style.display = "none";
+      $("rightGeneratedAnswerBox").classList.remove("visible");
+      $("rightGeneratedAnswerBox").innerHTML = "";
+      $("rightGeneratedAnswerBox").style.display = "none";
+      $("rightShowAnswerBtn").textContent = "Show answer";
+      $("rightShowAnswerBtn").disabled = true;
+    }
+
+    function resetRightSidebarAssessmentUI() {
+      $("rightAssessmentTitle").style.display = "none";
+      $("rightAssessmentBox").classList.remove("visible");
+      $("rightAssessmentBox").innerHTML = "";
+      $("rightAssessmentBox").style.display = "none";
+    }
+
+    function openRightSidebar() {
+      $("rightSidebar").classList.remove("collapsed");
+    }
+
+    function closeRightSidebar() {
+      $("rightSidebar").classList.add("collapsed");
+    }
+
+    // --- Shared problem / answer / assessment cores ---
+
+    async function _calculateAnswerCore(payload, submitBtnId, showBtnId, label) {
+      currentGeneratedAnswerRaw = "";
+      try {
+        logDebug("Calculate answer request start" + (label ? " (" + label + ")" : ""), {
+          problemLen: (currentProblemRaw || "").length,
+          chatModel: getSelectedChatModel() || "(default)"
+        });
+        var response = await fetch("/rag2/calculate-answer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(applySelectedCourse(applySelectedChatModel(payload)))
+        });
+
+        if (!response.ok) {
+          var errText = await response.text();
+          throw new Error("HTTP " + response.status + "\n" + errText);
+        }
+        logDebug("Calculate answer response", responseDebugInfo(response));
+
+        await readEventStream(response, function (event, data) {
+          if (event === "meta") { logDebug("Calculate answer stream meta", data); return; }
+          if (event === "status") {
+            if (data.phase === "thinking" || data.phase === "solving") setStatus("Preparing answer key...");
+            return;
+          }
+          if (event === "token") { currentGeneratedAnswerRaw += data.content || ""; return; }
+          if (event === "solution_done") { if (data.answer) currentGeneratedAnswerRaw = data.answer; return; }
+          if (event === "error") {
+            throw new Error((data && data.message ? data.message : "Answer stream error") + (data && data.request_id ? " [request_id=" + data.request_id + "]" : ""));
+          }
+          if (event === "done") { logDebug("Calculate answer stream done", data); }
+        });
+
+        if (!currentGeneratedAnswerRaw.trim()) throw new Error("Generated answer was empty.");
+
+        $(submitBtnId).disabled = false;
+        $(showBtnId).disabled = false;
+        setStatus("Problem ready - try solving it!");
+      } catch (e) {
+        logDebug("Calculate answer request failed", { label: label, error: String(e) });
+        throw e;
+      }
+    }
+
+    async function _submitAssessCore(studentAnswer, targetTitleId, targetBoxId, targetSubmitId, label) {
+      $(targetTitleId).style.display = "block";
+      $(targetBoxId).classList.add("visible");
+      $(targetBoxId).style.display = "block";
+      showThinking(targetBoxId);
+      $(targetSubmitId).disabled = true;
+      setStatus("Checking your answer...");
+
+      var assessRaw = "";
+      try {
+        logDebug("Assess request start" + (label ? " (" + label + ")" : ""), {
+          problemLen: (currentProblemRaw || "").length,
+          generatedLen: (currentGeneratedAnswerRaw || "").length,
+          answerLen: studentAnswer.length,
+          chatModel: getSelectedChatModel() || "(default)"
+        });
+        var response = await fetch("/rag2/assess", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(applySelectedCourse(applySelectedChatModel({
+            problem: currentProblemRaw,
+            generated_answer: currentGeneratedAnswerRaw,
+            student_answer: studentAnswer
+          })))
+        });
+
+        if (!response.ok) {
+          var errText = await response.text();
+          throw new Error("HTTP " + response.status + "\n" + errText);
+        }
+        await readEventStream(response, function (event, data) {
+          if (event === "meta" || event === "status") return;
+          if (event === "token") {
+            assessRaw += data.content || "";
+            $(targetBoxId).innerHTML = renderMarkdown(assessRaw);
+            $(targetBoxId).classList.add("streaming-cursor");
+            clearTimeout(mathRenderTimer);
+            mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
+            return;
+          }
+          if (event === "error") {
+            throw new Error((data && data.message ? data.message : "Assessment stream error") + (data && data.request_id ? " [request_id=" + data.request_id + "]" : ""));
+          }
+          if (event === "done") { logDebug("Assess stream done", data); }
+        });
+
+        $(targetBoxId).classList.remove("streaming-cursor");
+        $(targetBoxId).innerHTML = renderMarkdown(assessRaw);
+        await typesetMath();
+        setStatus("Done.");
+      } catch (e) {
+        logDebug("Assess request failed", { label: label, error: String(e) });
+        setError(String(e));
+        setStatus("Error");
+      } finally {
+        $(targetSubmitId).disabled = false;
+      }
+    }
+
+    function _toggleGeneratedAnswer(targetBoxId, targetTitleId, targetBtnId) {
+      setError("");
       if (!currentGeneratedAnswerRaw.trim()) {
         setError("The generated answer is not ready yet. Please wait a moment.");
         return;
       }
-
-      var box = $("generatedAnswerBox");
-      var button = $("showAnswerBtn");
-
+      var box = $(targetBoxId);
+      var button = $(targetBtnId);
       if (box.classList.contains("visible")) {
-        $("generatedAnswerTitle").style.display = "none";
+        $(targetTitleId).style.display = "none";
         box.classList.remove("visible");
+        box.style.display = "none";
         box.innerHTML = "";
         button.textContent = "Show answer";
         return;
       }
-
-      $("generatedAnswerTitle").style.display = "block";
+      $(targetTitleId).style.display = "block";
+      box.style.display = "block";
       box.innerHTML = renderMarkdown(currentGeneratedAnswerRaw);
       box.classList.add("visible");
       button.textContent = "Hide answer";
-
       clearTimeout(mathRenderTimer);
       mathRenderTimer = setTimeout(function () { typesetMath(); }, 0);
+    }
+
+    // --- Right sidebar wrappers ---
+    async function calculateRightProblemAnswer() {
+      await _calculateAnswerCore(
+        { problem: currentProblemRaw, conversation_context: buildConversationContext() },
+        "rightSubmitAnswerBtn", "rightShowAnswerBtn", "right sidebar"
+      );
+    }
+
+    async function submitRightAnswer() {
+      setError("");
+      var studentAnswer = $("rightStudentAnswer").value.trim();
+      if (!studentAnswer) { setError("Please enter your answer."); return; }
+      if (!currentGeneratedAnswerRaw.trim()) { setError("The generated answer is not ready yet. Please wait a moment."); return; }
+      await _submitAssessCore(studentAnswer, "rightAssessmentTitle", "rightAssessmentBox", "rightSubmitAnswerBtn", "right sidebar");
+    }
+
+    function toggleRightGeneratedAnswer() {
+      _toggleGeneratedAnswer("rightGeneratedAnswerBox", "rightGeneratedAnswerTitle", "rightShowAnswerBtn");
+    }
+
+    function toggleGeneratedAnswer() {
+      _toggleGeneratedAnswer("generatedAnswerBox", "generatedAnswerTitle", "showAnswerBtn");
     }
 
     // Chat rendering
@@ -793,7 +1001,7 @@
         $("singleView").style.display = "none";
         $("chatView").classList.add("visible");
         $("extraModeLabel").style.display = "none";
-        $("problemBtn").style.display = "none";
+        $("problemBtn").style.display = chatHistory.length > 0 ? "inline-block" : "none";
         renderChatConversation();
       } else {
         $("singleView").style.display = "block";
@@ -822,34 +1030,62 @@
       setError("");
       currentProblemRaw = "";
       currentGeneratedAnswerRaw = "";
-      resetGeneratedAnswerUI();
 
-      // Reset problem UI
-      $("problemSection").style.display = "block";
-      $("problemSection").classList.add("visible");
-      $("answerInputArea").classList.remove("visible");
-      resetAssessmentUI();
-      $("studentAnswer").value = "";
-      showThinking("problemContent");
+      if (isChatMode) {
+        // Right sidebar flow for chat mode
+        resetRightSidebarProblemUI();
+        resetRightSidebarAssessmentUI();
+        $("rightSidebarWelcome").style.display = "none";
+        $("rightProblemContent").style.display = "block";
+        $("rightProblemContent").classList.add("streaming-cursor");
+        $("rightAnswerInputArea").classList.remove("visible");
+        $("rightStudentAnswer").value = "";
+        showThinking("rightProblemContent");
+        openRightSidebar();
+      } else {
+        // Inline flow for single mode
+        resetGeneratedAnswerUI();
+        $("problemSection").style.display = "block";
+        $("problemSection").classList.add("visible");
+        $("answerInputArea").classList.remove("visible");
+        resetAssessmentUI();
+        $("studentAnswer").value = "";
+        showThinking("problemContent");
+      }
 
       $("problemBtn").disabled = true;
       $("newProblemBtn").disabled = true;
       $("submitAnswerBtn").disabled = true;
+      $("rightNewProblemBtn").disabled = true;
+      $("rightSubmitAnswerBtn").disabled = true;
       setStatus("Generating problem…");
 
       try {
-        logDebug("Problem request start", {
-          questionLen: (lastSingleQuestion || "").length,
-          notesLen: (lastNotesAnswer || "").length,
-          chatModel: getSelectedChatModel() || "(default)"
-        });
+        var payload;
+        if (isChatMode) {
+          logDebug("Problem request start (chat mode)", {
+            turns: chatHistory.length,
+            chatModel: getSelectedChatModel() || "(default)"
+          });
+          payload = applySelectedCourse(applySelectedChatModel({
+            conversation_context: buildConversationContext()
+          }));
+        } else {
+          logDebug("Problem request start", {
+            questionLen: (lastSingleQuestion || "").length,
+            notesLen: (lastNotesAnswer || "").length,
+            chatModel: getSelectedChatModel() || "(default)"
+          });
+          payload = applySelectedCourse(applySelectedChatModel({
+            question: lastSingleQuestion,
+            notes_answer: lastNotesAnswer
+          }));
+        }
+
         var response = await fetch("/rag2/problem", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(applySelectedCourse(applySelectedChatModel({
-            question: lastSingleQuestion,
-            notes_answer: lastNotesAnswer
-          })))
+          body: JSON.stringify(payload)
         });
 
         if (!response.ok) {
@@ -857,6 +1093,8 @@
           throw new Error("HTTP " + response.status + "\n" + errText);
         }
         logDebug("Problem response", responseDebugInfo(response));
+
+        var targetEl = isChatMode ? "rightProblemContent" : "problemContent";
 
         await readEventStream(response, function (event, data) {
           if (event === "meta") {
@@ -866,14 +1104,14 @@
           if (event === "status") {
             logDebug("Problem stream status", data);
             if (data.phase === "generating") {
-              $("problemContent").innerHTML = "";
+              $(targetEl).innerHTML = "";
             }
             return;
           }
           if (event === "token") {
             currentProblemRaw += data.content || "";
-            $("problemContent").innerHTML = renderMarkdown(currentProblemRaw);
-            $("problemContent").classList.add("streaming-cursor");
+            $(targetEl).innerHTML = renderMarkdown(currentProblemRaw);
+            $(targetEl).classList.add("streaming-cursor");
             clearTimeout(mathRenderTimer);
             mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
             return;
@@ -882,7 +1120,7 @@
             logDebug("Problem stream problem_done", { problemLen: (data.problem || "").length });
             if (data.problem) {
               currentProblemRaw = data.problem;
-              $("problemContent").innerHTML = renderMarkdown(currentProblemRaw);
+              $(targetEl).innerHTML = renderMarkdown(currentProblemRaw);
             }
             return;
           }
@@ -896,18 +1134,22 @@
         });
 
         // Final render
-        $("problemContent").classList.remove("streaming-cursor");
-        $("problemContent").innerHTML = renderMarkdown(currentProblemRaw);
+        $(targetEl).classList.remove("streaming-cursor");
+        $(targetEl).innerHTML = renderMarkdown(currentProblemRaw);
         if (!currentProblemRaw.trim()) {
           throw new Error("Problem generation returned empty output.");
         }
 
-        // Show answer input
-        $("answerInputArea").classList.add("visible");
-
         await typesetMath();
         setStatus("Problem ready. Preparing answer key...");
-        await calculateProblemAnswer();
+
+        if (isChatMode) {
+          $("rightAnswerInputArea").classList.add("visible");
+          await calculateRightProblemAnswer();
+        } else {
+          $("answerInputArea").classList.add("visible");
+          await calculateProblemAnswer();
+        }
 
       } catch (e) {
         logDebug("Problem request failed", { error: String(e) });
@@ -916,129 +1158,25 @@
       } finally {
         $("problemBtn").disabled = false;
         $("newProblemBtn").disabled = false;
+        $("rightNewProblemBtn").disabled = false;
       }
     }
 
     async function calculateProblemAnswer() {
-      currentGeneratedAnswerRaw = "";
-
-      try {
-        logDebug("Calculate answer request start", {
-          problemLen: (currentProblemRaw || "").length,
-          topicLen: (lastSingleQuestion || "").length,
-          notesLen: (lastNotesAnswer || "").length,
-          chatModel: getSelectedChatModel() || "(default)"
-        });
-        var response = await fetch("/rag2/calculate-answer", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(applySelectedCourse(applySelectedChatModel({
-            problem: currentProblemRaw,
-            topic_question: lastSingleQuestion,
-            notes_answer: lastNotesAnswer
-          })))
-        });
-
-        if (!response.ok) {
-          var errText = await response.text();
-          throw new Error("HTTP " + response.status + "\n" + errText);
-        }
-        logDebug("Calculate answer response", responseDebugInfo(response));
-
-        await readEventStream(response, function (event, data) {
-          if (event === "meta") {
-            logDebug("Calculate answer stream meta", data);
-            return;
-          }
-          if (event === "status") {
-            logDebug("Calculate answer stream status", data);
-            if (data.phase === "thinking" || data.phase === "solving") {
-              setStatus("Preparing answer key...");
-            }
-            return;
-          }
-          if (event === "token") {
-            currentGeneratedAnswerRaw += data.content || "";
-            return;
-          }
-          if (event === "solution_done") {
-            logDebug("Calculate answer stream solution_done", { answerLen: (data.answer || "").length });
-            if (data.answer) {
-              currentGeneratedAnswerRaw = data.answer;
-            }
-            return;
-          }
-          if (event === "error") {
-            logDebug("Calculate answer stream error", data);
-            throw new Error((data && data.message ? data.message : "Answer stream error") + (data && data.request_id ? " [request_id=" + data.request_id + "]" : ""));
-          }
-          if (event === "done") {
-            logDebug("Calculate answer stream done", data);
-          }
-        });
-
-        if (!currentGeneratedAnswerRaw.trim()) {
-          throw new Error("Generated answer was empty.");
-        }
-
-        $("submitAnswerBtn").disabled = false;
-        $("showAnswerBtn").disabled = false;
-        setStatus("Problem ready - try solving it!");
-
-      } catch (e) {
-        logDebug("Calculate answer request failed", { error: String(e) });
-        throw e;
-      }
+      await _calculateAnswerCore(
+        { problem: currentProblemRaw, topic_question: lastSingleQuestion, notes_answer: lastNotesAnswer },
+        "submitAnswerBtn", "showAnswerBtn", "single mode"
+      );
     }
 
     // Answer assessment
     async function submitAnswer() {
       setError("");
-
       var studentAnswer = $("studentAnswer").value.trim();
-      if (!studentAnswer) {
-        setError("Please enter your answer.");
-        return;
-      }
-      if (!currentGeneratedAnswerRaw.trim()) {
-        setError("The generated answer is not ready yet. Please wait a moment.");
-        return;
-      }
-
-      $("assessmentTitle").style.display = "block";
-      $("assessmentBox").classList.add("visible");
-      showThinking("assessmentBox");
-
-      $("submitAnswerBtn").disabled = true;
-      setStatus("Checking your answer...");
-
-      var assessRaw = "";
-
-      try {
-        logDebug("Assess request start", {
-          problemLen: (currentProblemRaw || "").length,
-          generatedLen: (currentGeneratedAnswerRaw || "").length,
-          answerLen: studentAnswer.length,
-          chatModel: getSelectedChatModel() || "(default)"
-        });
-        var response = await fetch("/rag2/assess", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(applySelectedCourse(applySelectedChatModel({
-            problem: currentProblemRaw,
-            generated_answer: currentGeneratedAnswerRaw,
-            student_answer: studentAnswer
-          })))
-        });
-
-        if (!response.ok) {
-          var errText = await response.text();
-          throw new Error("HTTP " + response.status + "\n" + errText);
-        }
-        logDebug("Assess response", responseDebugInfo(response));
-
-        await readEventStream(response, function (event, data) {
-          if (event === "meta") {
+      if (!studentAnswer) { setError("Please enter your answer."); return; }
+      if (!currentGeneratedAnswerRaw.trim()) { setError("The generated answer is not ready yet. Please wait a moment."); return; }
+      await _submitAssessCore(studentAnswer, "assessmentTitle", "assessmentBox", "submitAnswerBtn", "single mode");
+    }
             logDebug("Assess stream meta", data);
             return;
           }
@@ -1095,7 +1233,9 @@
       // Hide problem section when asking new question
       $("problemSection").style.display = "none";
       $("problemSection").classList.remove("visible");
-      $("problemBtn").style.display = "none";
+      if (!isChatMode) {
+        $("problemBtn").style.display = "none";
+      }
       $("submitAnswerBtn").disabled = false;
       $("newProblemBtn").disabled = false;
 
@@ -1176,6 +1316,8 @@
           });
           finalizeStreamingBubble(streamCoverage);
           autoSaveCurrentConversation();
+          // Show Problem button after first turn
+          $("problemBtn").style.display = "inline-block";
         } else {
           $("notes").classList.remove("streaming-cursor");
           $("extra").classList.remove("streaming-cursor");
@@ -1326,14 +1468,30 @@
       // Problem generation
       $("problemBtn").addEventListener("click", generateProblem);
 
-      // New problem button
+      // New problem button (single mode)
       $("newProblemBtn").addEventListener("click", generateProblem);
 
-      // Reveal generated answer
+      // Reveal generated answer (single mode)
       $("showAnswerBtn").addEventListener("click", toggleGeneratedAnswer);
 
-      // Submit answer for assessment
+      // Submit answer for assessment (single mode)
       $("submitAnswerBtn").addEventListener("click", submitAnswer);
+
+      // Right sidebar event listeners
+      $("rightSidebarInnerToggle").addEventListener("click", function () {
+        $("rightSidebar").classList.toggle("collapsed");
+        $("rightSidebarInnerToggle").textContent = $("rightSidebar").classList.contains("collapsed") ? "◀" : "▶";
+      });
+
+      $("rightNewProblemBtn").addEventListener("click", generateProblem);
+
+      $("rightShowAnswerBtn").addEventListener("click", toggleRightGeneratedAnswer);
+
+      $("rightSubmitAnswerBtn").addEventListener("click", submitRightAnswer);
+
+      $("rightStudentAnswer").addEventListener("keydown", function (e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") submitRightAnswer();
+      });
 
       // Enter in answer field submits
       $("studentAnswer").addEventListener("keydown", function (e) {

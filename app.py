@@ -736,24 +736,28 @@ def generate_problem():
     data = request.get_json(force=True) or {}
     request_id = current_request_id()
 
+    # Support both single-question mode and chat-mode (full conversation context)
+    conversation_context = (data.get("conversation_context") or "").strip()
     q = (data.get("question") or "").strip()
     notes_answer = (data.get("notes_answer") or "").strip()
     chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
     if error_response:
         return error_response
 
-    if not q:
-        return jsonify(error="Missing 'question'", request_id=request_id), 400
+    if not conversation_context and not q:
+        return jsonify(error="Missing 'question' or 'conversation_context'", request_id=request_id), 400
 
-    # Retrieve relevant chunks for the topic
-    q_emb = embed_query(q)
+    # Use conversation context for retrieval when available; otherwise fall back to the single question
+    retrieval_query = conversation_context if conversation_context else q
+    q_emb = embed_query(retrieval_query)
     hits = retriever.search(q_emb, top_k=RAG.TOP_K_DEFAULT, log_hits=True)
     sources, source_blocks = render_sources(hits)
 
     app.logger.info(
-        "[req:%s] /problem q=%r hits=%d chat_model=%s",
+        "[req:%s] /problem q_len=%d ctx_len=%d hits=%d chat_model=%s",
         request_id,
-        q[:120],
+        len(q),
+        len(conversation_context),
         len(hits),
         chat_model,
     )
@@ -764,7 +768,7 @@ def generate_problem():
 
         system_p = (
             "You are a course assistant that generates practice problems for students.\n"
-            "Based on the SOURCES and the student's question, create ONE mathematical problem.\n\n"
+            "Based on the SOURCES and the student's context, create ONE mathematical problem.\n\n"
             "RULES:\n"
             "- The problem must be solvable using the material in the sources\n"
             "- Include a clear, specific task (e.g. 'Compute...', 'Find...', 'Show that...')\n"
@@ -779,8 +783,12 @@ def generate_problem():
 
         user_p = (
             "SOURCES:\n" + "\n".join(source_blocks)
-            + "\n\nStudent's question: " + q
         )
+
+        if conversation_context:
+            user_p += "\n\nConversation context:\n" + conversation_context
+        else:
+            user_p += "\n\nStudent's question: " + q
 
         if notes_answer:
             user_p += "\n\nThe answer given to the student (for context):\n" + notes_answer
@@ -820,6 +828,7 @@ def calculate_answer():
     problem = (data.get("problem") or "").strip()
     topic_question = (data.get("topic_question") or data.get("question") or "").strip()
     notes_answer = (data.get("notes_answer") or "").strip()
+    conversation_context = (data.get("conversation_context") or "").strip()
     chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
     if error_response:
         return error_response
@@ -833,16 +842,19 @@ def calculate_answer():
     retrieval_query = problem_text
     if topic_question:
         retrieval_query = topic_question + "\n\n" + problem_text
+    elif conversation_context:
+        retrieval_query = conversation_context + "\n\n" + problem_text
 
     q_emb = embed_query(retrieval_query)
     hits = retriever.search(q_emb, top_k=RAG.TOP_K_DEFAULT, log_hits=True)
     _, source_blocks = render_sources(hits)
 
     app.logger.info(
-        "[req:%s] /calculate-answer problem_len=%d topic_len=%d hits=%d chat_model=%s",
+        "[req:%s] /calculate-answer problem_len=%d topic_len=%d ctx_len=%d hits=%d chat_model=%s",
         request_id,
         len(problem_text),
         len(topic_question),
+        len(conversation_context),
         len(hits),
         chat_model,
     )
@@ -870,6 +882,8 @@ def calculate_answer():
 
         if topic_question:
             user_s += "\n\nOriginal student topic request:\n" + topic_question
+        if conversation_context:
+            user_s += "\n\nConversation context:\n" + conversation_context
         if notes_answer:
             user_s += "\n\nContext from the earlier notes-based answer:\n" + notes_answer
 
