@@ -27,6 +27,14 @@
 
 <body>
   <div class="wrap">
+    <!-- Left sidebar: conversations -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h2>Conversations</h2>
+        <button class="new-conv-btn" id="newConvBtn" type="button">New</button>
+      </div>
+      <ul class="conversations-list" id="conversationsList"></ul>
+    </div>
 
     <div class="card">
       <div class="topbar">
@@ -83,10 +91,6 @@
 
         <!-- Chat conversation view -->
         <div id="chatView" class="chat-container">
-          <div class="chat-header">
-            <h2>Conversation <span id="turnCount" class="chat-turn-count"></span></h2>
-            <button class="chat-clear" id="clearChat">New conversation</button>
-          </div>
           <div class="chat-scroll" id="chatScroll"></div>
         </div>
       </div>
@@ -338,6 +342,147 @@
     var currentGeneratedAnswerRaw = ""; // hidden answer key for assessment
 
     var MAX_TURNS = 20;
+
+    // --- Conversation persistence (localStorage) ---
+    var CONV_STORAGE_KEY = "rag_conversations";
+    var currentConvId = null; // null = unsaved / new
+
+    function _convKey(id) { return CONV_STORAGE_KEY + ":" + id; }
+    function _convMetaKey() { return CONV_STORAGE_KEY + "_meta"; }
+
+    function listConversationIds() {
+      try {
+        var meta = JSON.parse(localStorage.getItem(_convMetaKey()) || "[]");
+        return Array.isArray(meta) ? meta : [];
+      } catch (e) { return []; }
+    }
+
+    function saveConversation(id, title, history) {
+      try {
+        var entry = { id: id, title: title, updated: Date.now(), history: history };
+        localStorage.setItem(_convKey(id), JSON.stringify(entry));
+        var ids = listConversationIds();
+        if (ids.indexOf(id) === -1) {
+          ids.unshift(id);
+          localStorage.setItem(_convMetaKey(), JSON.stringify(ids));
+        }
+      } catch (e) {
+        logDebug("Failed to save conversation", { error: String(e) });
+      }
+    }
+
+    function loadConversation(id) {
+      try {
+        var raw = localStorage.getItem(_convKey(id));
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch (e) { return null; }
+    }
+
+    function deleteConversation(id) {
+      try {
+        localStorage.removeItem(_convKey(id));
+        var ids = listConversationIds();
+        var idx = ids.indexOf(id);
+        if (idx !== -1) {
+          ids.splice(idx, 1);
+          localStorage.setItem(_convMetaKey(), JSON.stringify(ids));
+        }
+      } catch (e) { }
+    }
+
+    function conversationTitleFromHistory(history) {
+      if (!history || !history.length) return "New conversation";
+      var q = history[0].question || "";
+      q = q.replace(/\s+/g, " ").trim();
+      if (!q) return "New conversation";
+      return q.length > 40 ? q.slice(0, 37) + "…" : q;
+    }
+
+    function setActiveConversationId(id) {
+      currentConvId = id;
+      renderSidebar();
+    }
+
+    function renderSidebar() {
+      var listEl = $("conversationsList");
+      var ids = listConversationIds();
+      listEl.innerHTML = "";
+      if (!ids.length) {
+        var empty = document.createElement("div");
+        empty.className = "sidebar-empty";
+        empty.textContent = "No conversations yet";
+        listEl.appendChild(empty);
+        return;
+      }
+      for (var i = 0; i < ids.length; i++) {
+        var id = ids[i];
+        var conv = loadConversation(id);
+        var title = conv && conv.title ? conv.title : "Conversation";
+        var li = document.createElement("li");
+        if (id === currentConvId) li.classList.add("active");
+        li.onclick = (function (cid) {
+          return function () {
+            switchToConversation(cid);
+          };
+        })(id);
+
+        var span = document.createElement("span");
+        span.className = "conv-title";
+        span.textContent = title;
+
+        var del = document.createElement("button");
+        del.className = "conv-del";
+        del.textContent = "×";
+        del.title = "Delete";
+        del.onclick = (function (cid) {
+          return function (e) {
+            e.stopPropagation();
+            if (confirm("Delete this conversation?")) {
+              deleteConversation(cid);
+              if (currentConvId === cid) startNewConversation();
+              else renderSidebar();
+            }
+          };
+        })(id);
+
+        li.appendChild(span);
+        li.appendChild(del);
+        listEl.appendChild(li);
+      }
+    }
+
+    function startNewConversation() {
+      chatHistory = [];
+      rawNotes = "";
+      rawExtra = "";
+      currentConvId = null;
+      renderChatConversation();
+      renderSidebar();
+      $("welcome").style.display = "flex";
+    }
+
+    function switchToConversation(id) {
+      var conv = loadConversation(id);
+      if (!conv || !conv.history) return;
+      chatHistory = conv.history;
+      rawNotes = "";
+      rawExtra = "";
+      currentConvId = id;
+      $("welcome").style.display = "none";
+      renderChatConversation();
+      renderSidebar();
+    }
+
+    function autoSaveCurrentConversation() {
+      if (!chatHistory.length) return;
+      if (!currentConvId) {
+        currentConvId = "conv_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+      }
+      var title = conversationTitleFromHistory(chatHistory);
+      saveConversation(currentConvId, title, chatHistory);
+      renderSidebar();
+    }
 
     function resetGeneratedAnswerUI() {
       $("generatedAnswerTitle").style.display = "none";
@@ -1033,6 +1178,7 @@
             coverage: streamCoverage
           });
           finalizeStreamingBubble(streamCoverage);
+          autoSaveCurrentConversation();
         } else {
           $("notes").classList.remove("streaming-cursor");
           $("extra").classList.remove("streaming-cursor");
@@ -1172,14 +1318,8 @@
       });
 
       switchMode(true); // always chat mode
-
-      // Clear chat
-      $("clearChat").addEventListener("click", function () {
-        chatHistory = [];
-        rawNotes = "";
-        rawExtra = "";
-        renderChatConversation();
-      });
+      renderSidebar();
+      $("newConvBtn").addEventListener("click", startNewConversation);
 
       // Problem generation
       $("problemBtn").addEventListener("click", generateProblem);
