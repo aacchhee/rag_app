@@ -102,6 +102,11 @@
             <textarea id="q" placeholder="Ask something… (math is OK)" rows="1"></textarea>
             <button id="askBtn" type="button">Ask</button>
             <button id="problemBtn" class="problem-btn" type="button" style="display:none">Problem</button>
+            <select id="problemDifficulty" style="display:none">
+              <option value="easy">Easy</option>
+              <option value="medium" selected>Medium</option>
+              <option value="hard">Hard</option>
+            </select>
           </div>
 
           <div class="controls-row">
@@ -518,6 +523,7 @@
       $("rightStudentAnswer").value = "";
       $("welcome").style.display = "flex";
       $("problemBtn").style.display = "none";
+      $("problemDifficulty").style.display = "none";
     }
 
     function switchToConversation(id) {
@@ -543,6 +549,7 @@
       }
       renderChatConversation();
       $("problemBtn").style.display = chatHistory.length > 0 ? "inline-block" : "none";
+      $("problemDifficulty").style.display = chatHistory.length > 0 ? "inline-block" : "none";
       renderSidebar();
     }
 
@@ -1154,11 +1161,13 @@
         $("chatView").classList.add("visible");
         $("extraModeLabel").style.display = "none";
         $("problemBtn").style.display = chatHistory.length > 0 ? "inline-block" : "none";
+        $("problemDifficulty").style.display = chatHistory.length > 0 ? "inline-block" : "none";
         renderChatConversation();
       } else {
         $("singleView").style.display = "block";
         $("chatView").classList.remove("visible");
         $("extraModeLabel").style.display = "flex";
+        $("problemDifficulty").style.display = "inline-block";
         // Show problem button if we have a previous answer
         if (lastNotesAnswer) {
           $("problemBtn").style.display = "inline-block";
@@ -1220,7 +1229,8 @@
             chatModel: getSelectedChatModel() || "(default)"
           });
           payload = applySelectedCourse(applySelectedChatModel({
-            conversation_context: buildConversationContext()
+            conversation_context: buildConversationContext(),
+            difficulty: $("problemDifficulty").value
           }));
         } else {
           logDebug("Problem request start", {
@@ -1230,7 +1240,8 @@
           });
           payload = applySelectedCourse(applySelectedChatModel({
             question: lastSingleQuestion,
-            notes_answer: lastNotesAnswer
+            notes_answer: lastNotesAnswer,
+            difficulty: $("problemDifficulty").value
           }));
         }
 
@@ -1432,6 +1443,7 @@
           autoSaveCurrentConversation();
           // Show Problem button after first turn
           $("problemBtn").style.display = "inline-block";
+          $("problemDifficulty").style.display = "inline-block";
         } else {
           $("notes").classList.remove("streaming-cursor");
           $("extra").classList.remove("streaming-cursor");
@@ -1443,6 +1455,7 @@
           // Store answer and show problem button
           lastNotesAnswer = rawNotes;
           $("problemBtn").style.display = "inline-block";
+          $("problemDifficulty").style.display = "inline-block";
         }
 
         await typesetMath();

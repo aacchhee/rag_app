@@ -813,6 +813,9 @@ def generate_problem():
     conversation_context = (data.get("conversation_context") or "").strip()
     q = (data.get("question") or "").strip()
     notes_answer = (data.get("notes_answer") or "").strip()
+    difficulty = (data.get("difficulty") or "medium").strip().lower()
+    if difficulty not in ("easy", "medium", "hard"):
+        difficulty = "medium"
     chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
     if error_response:
         return error_response
@@ -866,6 +869,7 @@ def generate_problem():
         if notes_answer:
             user_p += "\n\nThe answer given to the student (for context):\n" + notes_answer
 
+        user_p += f"\n\nDifficulty level: {difficulty}."
         user_p += "\n\nGenerate one practice problem related to this topic."
 
         yield _sse("status", {"phase": "generating"})
