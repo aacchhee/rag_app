@@ -284,7 +284,7 @@ def chat_completion_stream(
 
     try:
         resolved_chat_model = Config.resolve_chat_model(chat_model)
-        extra_body = Config.chat_extra_body(enable_thinking=Config.CHAT_ENABLE_THINKING)
+        extra_body = Config.chat_extra_body(enable_thinking=Config.chat_enable_thinking())
         client = _get_raw_client()
         started = time.perf_counter()
 
