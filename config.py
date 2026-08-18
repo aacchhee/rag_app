@@ -11,7 +11,7 @@ class Config:
     CHAT_URL = os.getenv("CHAT_URL")
     CHAT_MODEL = os.getenv("CHAT_MODEL")
     CHAT_TEMPERATURE = float(os.getenv("CHAT_TEMPERATURE", "0.2"))
-    CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "1200"))
+    CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "4096"))
     CHAT_ENABLE_THINKING = os.getenv("CHAT_ENABLE_THINKING")
     CHAT_EXTRA_BODY_JSON = os.getenv("CHAT_EXTRA_BODY_JSON")
 
