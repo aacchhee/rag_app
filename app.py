@@ -56,7 +56,7 @@ def _log_startup_config() -> None:
         app.logger.warning("startup config missing=%s", ",".join(missing))
     extra_body = Config.chat_extra_body()
     app.logger.info(
-        "startup config debug=%s chat_default_model=%s allowed_chat_models=%s chat_base=%s embed_model=%s embed_base=%s qdrant_url=%s collection=%s timeout=%s thinking=%s retry_nonthinking=%s extra_body_keys=%s",
+        "startup config debug=%s chat_default_model=%s allowed_chat_models=%s chat_base=%s embed_model=%s embed_base=%s qdrant_url=%s collection=%s timeout=%s thinking=false extra_body_keys=%s",
         Config.DEBUG,
         Config.default_chat_model() or "-",
         ",".join(Config.allowed_chat_models().keys()) or "-",
@@ -66,8 +66,6 @@ def _log_startup_config() -> None:
         Config.QDRANT_URL,
         Config.QDRANT_COLLECTION,
         Config.LLM_TIMEOUT,
-        Config.chat_enable_thinking(),
-        Config.chat_retry_with_thinking_disabled(),
         ",".join(sorted(extra_body.keys())) if extra_body else "-",
     )
 

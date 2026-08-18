@@ -13,7 +13,6 @@ class Config:
     CHAT_TEMPERATURE = float(os.getenv("CHAT_TEMPERATURE", "0.2"))
     CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "1200"))
     CHAT_ENABLE_THINKING = os.getenv("CHAT_ENABLE_THINKING")
-    CHAT_RETRY_WITH_THINKING_DISABLED = os.getenv("CHAT_RETRY_WITH_THINKING_DISABLED", "true")
     CHAT_EXTRA_BODY_JSON = os.getenv("CHAT_EXTRA_BODY_JSON")
 
     # --- Legacy override for static labels ---
@@ -60,12 +59,9 @@ class Config:
         raise RuntimeError(f"Invalid boolean value: {raw!r}")
 
     @classmethod
-    def chat_enable_thinking(cls) -> bool | None:
-        return cls._parse_bool(cls.CHAT_ENABLE_THINKING, default=None)
+    def chat_enable_thinking(cls) -> bool:
+        return bool(cls._parse_bool(cls.CHAT_ENABLE_THINKING, default=False))
 
-    @classmethod
-    def chat_retry_with_thinking_disabled(cls) -> bool:
-        return bool(cls._parse_bool(cls.CHAT_RETRY_WITH_THINKING_DISABLED, default=True))
 
     @classmethod
     def allowed_chat_models(cls) -> dict[str, dict[str, str]]:
@@ -160,18 +156,13 @@ class Config:
                 raise RuntimeError("CHAT_EXTRA_BODY_JSON must decode to a JSON object")
             extra_body = copy.deepcopy(parsed)
 
-        effective_enable_thinking = (
-            enable_thinking
-            if enable_thinking is not None
-            else cls.chat_enable_thinking()
-        )
-        if effective_enable_thinking is not None:
-            chat_template_kwargs = extra_body.setdefault("chat_template_kwargs", {})
-            if not isinstance(chat_template_kwargs, dict):
-                raise RuntimeError(
-                    "CHAT_EXTRA_BODY_JSON.chat_template_kwargs must be a JSON object"
-                )
-            chat_template_kwargs["enable_thinking"] = effective_enable_thinking
+        effective_enable_thinking = enable_thinking if enable_thinking is not None else cls.chat_enable_thinking()
+        chat_template_kwargs = extra_body.setdefault("chat_template_kwargs", {})
+        if not isinstance(chat_template_kwargs, dict):
+            raise RuntimeError(
+                "CHAT_EXTRA_BODY_JSON.chat_template_kwargs must be a JSON object"
+            )
+        chat_template_kwargs["enable_thinking"] = effective_enable_thinking
 
         return extra_body or None
 
