@@ -542,6 +542,7 @@
         $("rightProblemArea").style.display = "none";
       }
       renderChatConversation();
+      $("problemBtn").style.display = chatHistory.length > 0 ? "inline-block" : "none";
       renderSidebar();
     }
 
