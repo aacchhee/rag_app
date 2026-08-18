@@ -116,10 +116,11 @@ def _invoke_once(
     temperature: float,
     max_tokens: int,
     chat_model: str | None = None,
+    enable_thinking: bool = False,
     attempt: str = "primary",
 ) -> tuple[str, dict[str, Any]]:
     resolved_chat_model = Config.resolve_chat_model(chat_model)
-    extra_body = Config.chat_extra_body(enable_thinking=True)
+    extra_body = Config.chat_extra_body(enable_thinking=enable_thinking)
     client = _get_raw_client()
 
     started = time.perf_counter()
@@ -358,8 +359,9 @@ def chat_completion_stream(
             fallback_content, fallback_diagnostics = _invoke_once(
                 messages,
                 temperature=temp,
-                max_tokens=tok,
+                max_tokens=tok * 2,
                 chat_model=resolved_chat_model,
+                enable_thinking=False,
                 attempt="stream_fallback",
             )
             if fallback_content:
