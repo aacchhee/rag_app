@@ -313,6 +313,74 @@ def chat_models():
     )
 
 
+@app.get("/diagnose-llm")
+def diagnose_llm():
+    """Hit the LLM with a trivial prompt using our own wrappers.
+
+    This exercises the exact _extract_delta / _extract_message logic
+    so we can see whether the model returns content, reasoning, or nothing.
+    """
+    request_id = current_request_id()
+    chat_model, error_response = _resolve_request_chat_model({}, request_id=request_id)
+    if error_response:
+        return error_response
+
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Say exactly the word 'pong' and nothing else."},
+    ]
+
+    # --- Non-streaming through our wrapper ---
+    ns_content = "(error)"
+    ns_reasoning = "(error)"
+    ns_error = None
+    try:
+        ns_content, ns_diagnostics = chat_completion(
+            messages,
+            temperature=0.0,
+            max_tokens=50,
+            chat_model=chat_model,
+        )
+        ns_reasoning_len = ns_diagnostics.get("reasoning_len", -1)
+    except Exception as e:
+        ns_error = str(e)
+        ns_reasoning_len = -1
+
+    # --- Streaming through our wrapper ---
+    stream_tokens: list[str] = []
+    stream_error = None
+    try:
+        for token in chat_completion_stream(
+            messages,
+            temperature=0.0,
+            max_tokens=50,
+            chat_model=chat_model,
+        ):
+            stream_tokens.append(token)
+    except Exception as e:
+        stream_error = str(e)
+
+    return jsonify(
+        request_id=request_id,
+        chat_model=chat_model,
+        base_url=Config.chat_base_url(),
+        notes_max_tokens=RAG.NOTES_MAX_TOKENS,
+        env_chat_enable_thinking=Config.CHAT_ENABLE_THINKING,
+        non_streaming={
+            "content": ns_content,
+            "content_len": len(ns_content) if ns_content != "(error)" else -1,
+            "reasoning_len": ns_reasoning_len,
+            "error": ns_error,
+        },
+        streaming={
+            "token_count": len(stream_tokens),
+            "total_chars": sum(len(t) for t in stream_tokens),
+            "tokens": stream_tokens,
+            "error": stream_error,
+        },
+    )
+
+
 # Original non-streaming endpoint (kept for backwards compatibility)
 @app.post("/ask")
 def ask():
@@ -629,6 +697,13 @@ def ask_stream():
         ):
             notes_tokens += 1
             notes_raw += token
+            app.logger.info(
+                "[req:%s] /ask-stream token #%d len=%d token_preview=%r",
+                request_id,
+                notes_tokens,
+                len(token),
+                token[:80],
+            )
             yield _sse("token", {"target": "notes", "content": token})
 
         # Clean up and extract coverage

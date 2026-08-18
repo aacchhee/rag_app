@@ -79,6 +79,13 @@ def _extract_delta(delta: Any) -> tuple[str, str]:
         except Exception:
             pass
 
+    logger.info(
+        "[req:%s] [llm] _extract_delta content=%r reasoning=%r raw_delta=%r",
+        current_request_id(),
+        content,
+        reasoning,
+        delta,
+    )
     return content or "", reasoning or ""
 
 
@@ -104,6 +111,13 @@ def _extract_message(msg: Any) -> tuple[str, str]:
         except Exception:
             pass
 
+    logger.info(
+        "[req:%s] [llm] _extract_message content=%r reasoning=%r raw_msg=%r",
+        current_request_id(),
+        content,
+        reasoning,
+        msg,
+    )
     return content or "", reasoning or ""
 
 

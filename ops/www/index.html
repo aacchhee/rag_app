@@ -251,7 +251,10 @@
 
         if (block.trim()) {
           var parsed = parseSSEBlock(block);
-          if (parsed) onEvent(parsed.event, parsed.data);
+          if (parsed) {
+            console.log("[PARSED SSE]", parsed.event, parsed.data);
+            onEvent(parsed.event, parsed.data);
+          }
         }
 
         boundary = buffer.indexOf("\n\n");
@@ -268,7 +271,9 @@
       while (true) {
         var result = await reader.read();
         if (result.done) break;
-        buffer += decoder.decode(result.value, { stream: true });
+        var chunk = decoder.decode(result.value, { stream: true });
+        console.log("[RAW SSE CHUNK]", chunk);
+        buffer += chunk;
         buffer = drainSSEBuffer(buffer, onEvent);
       }
 
