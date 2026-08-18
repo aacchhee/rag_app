@@ -608,6 +608,19 @@
       syncRightTogglePosition();
     }
 
+    function syncRightTogglePosition() {
+      var sidebar = $("rightSidebar");
+      var toggle = $("rightSidebarToggle");
+      if (sidebar.classList.contains("collapsed")) {
+        toggle.style.left = "auto";
+        toggle.style.right = "12px";
+        return;
+      }
+      var rect = sidebar.getBoundingClientRect();
+      toggle.style.left = (rect.left - toggle.offsetWidth - 8) + "px";
+      toggle.style.right = "auto";
+    }
+
     // --- Problem tabs ---
     function renderProblemTabs() {
       var tabsEl = $("problemTabs");
@@ -1595,19 +1608,6 @@
         }
         syncRightTogglePosition();
       });
-
-      function syncRightTogglePosition() {
-        var sidebar = $("rightSidebar");
-        var toggle = $("rightSidebarToggle");
-        if (sidebar.classList.contains("collapsed")) {
-          toggle.style.left = "auto";
-          toggle.style.right = "12px";
-          return;
-        }
-        var rect = sidebar.getBoundingClientRect();
-        toggle.style.left = (rect.left - toggle.offsetWidth - 8) + "px";
-        toggle.style.right = "auto";
-      }
 
       // Custom left-edge resize (native resize handle is always right side)
       (function setupResizeGrip() {
