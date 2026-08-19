@@ -32,7 +32,11 @@
       <h1 class="sidebar-title">Notes-first RAG</h1>
       <div class="sidebar-header">
         <h2>Conversations</h2>
-        <button class="new-conv-btn" id="newConvBtn" type="button">New</button>
+        <div class="sidebar-header-actions">
+          <button class="import-btn" id="importBtn" type="button" title="Import conversation">Import</button>
+          <input type="file" id="importFileInput" accept=".json" style="display:none;">
+          <button class="new-conv-btn" id="newConvBtn" type="button">New</button>
+        </div>
       </div>
       <ul class="conversations-list" id="conversationsList"></ul>
     </div>
@@ -483,28 +487,156 @@
         span.className = "conv-title";
         span.textContent = title;
 
-        var del = document.createElement("button");
-        del.className = "conv-del";
-        del.textContent = "×";
-        del.title = "Delete";
-        del.onclick = (function (cid) {
+        var menuBtn = document.createElement("button");
+        menuBtn.className = "conv-menu-btn";
+        menuBtn.textContent = "…";
+        menuBtn.title = "More";
+        menuBtn.onclick = (function (cid) {
           return function (e) {
             e.stopPropagation();
-            if (confirm("Delete this conversation?")) {
-              deleteConversation(cid);
-              if (currentConvId === cid) startNewConversation();
-              else renderSidebar();
-            }
+            toggleConvMenu(cid, menuBtn);
           };
         })(id);
 
         li.appendChild(span);
-        li.appendChild(del);
+        li.appendChild(menuBtn);
         listEl.appendChild(li);
       }
     }
 
-    function startNewConversation() {
+    /**
+     * Close any open conversation dropdown menus.
+     */
+    function closeAllConvMenus() {
+      var menus = document.querySelectorAll(".conv-menu-dropdown");
+      for (var i = 0; i < menus.length; i++) {
+        menus[i].remove();
+      }
+    }
+
+    /**
+     * Show the overflow menu (download / rename / delete) for a conversation.
+     */
+    function toggleConvMenu(cid, anchorBtn) {
+      var existing = document.getElementById("conv-menu-" + cid);
+      if (existing) {
+        existing.remove();
+        return;
+      }
+      closeAllConvMenus();
+
+      var dd = document.createElement("div");
+      dd.id = "conv-menu-" + cid;
+      dd.className = "conv-menu-dropdown";
+
+      var items = [
+        { label: "Download", action: function () { downloadConversation(cid); closeAllConvMenus(); } },
+        { label: "Rename", action: function () { renameConversation(cid); closeAllConvMenus(); } },
+        { label: "Delete", action: function () {
+          if (confirm("Delete this conversation?")) {
+            deleteConversation(cid);
+            if (currentConvId === cid) startNewConversation();
+            else renderSidebar();
+          }
+          closeAllConvMenus();
+        } }
+      ];
+
+      for (var i = 0; i < items.length; i++) {
+        (function (item) {
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.textContent = item.label;
+          btn.onclick = function (e) {
+            e.stopPropagation();
+            item.action();
+          };
+          dd.appendChild(btn);
+        })(items[i]);
+      }
+
+      document.body.appendChild(dd);
+
+      var rect = anchorBtn.getBoundingClientRect();
+      dd.style.top = (rect.bottom + 4) + "px";
+      dd.style.left = (rect.left - 80) + "px";
+    }
+
+    function renameConversation(id) {
+      var conv = loadConversation(id);
+      if (!conv) return;
+      var newTitle = prompt("Rename conversation:", conv.title || "");
+      if (newTitle === null) return; // cancelled
+      newTitle = newTitle.trim();
+      if (!newTitle) newTitle = "Conversation";
+      conv.title = newTitle;
+      conv.updated = Date.now();
+      try {
+        localStorage.setItem(_convKey(id), JSON.stringify(conv));
+      } catch (e) {
+        logDebug("Failed to rename conversation", { error: String(e) });
+      }
+      if (currentConvId === id) renderChatConversation();
+      renderSidebar();
+    }
+
+    function downloadConversation(id) {
+      var conv = loadConversation(id);
+      if (!conv) return;
+      var blob = new Blob([JSON.stringify(conv, null, 2)], { type: "application/json" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      var safeTitle = (conv.title || "conversation").replace(/[^a-z0-9\-_\s]/gi, "").trim().replace(/\s+/g, "_") || "conversation";
+      a.download = safeTitle + "_" + id + ".json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function importConversation(file) {
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        var text = e.target.result;
+        var data;
+        try {
+          data = JSON.parse(text);
+        } catch (err) {
+          setError("Invalid JSON file.");
+          return;
+        }
+        if (!data || typeof data !== "object") {
+          setError("Invalid conversation file.");
+          return;
+        }
+        if (!Array.isArray(data.history)) {
+          setError("Invalid conversation file: missing history.");
+          return;
+        }
+        var newId = "conv_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+        var entry = {
+          id: newId,
+          title: (data.title || "Imported conversation"),
+          updated: Date.now(),
+          history: data.history,
+          problems: Array.isArray(data.problems) ? data.problems : []
+        };
+        try {
+          localStorage.setItem(_convKey(newId), JSON.stringify(entry));
+          var ids = listConversationIds();
+          ids.unshift(newId);
+          localStorage.setItem(_convMetaKey(), JSON.stringify(ids));
+          renderSidebar();
+          switchToConversation(newId);
+          setStatus("Conversation imported.");
+        } catch (err) {
+          logDebug("Failed to import conversation", { error: String(err) });
+          setError("Failed to import conversation.");
+        }
+      };
+      reader.readAsText(file);
+    }
       chatHistory = [];
       rawNotes = "";
       rawExtra = "";
@@ -1586,6 +1718,24 @@
       switchMode(true); // always chat mode
       renderSidebar();
       $("newConvBtn").addEventListener("click", startNewConversation);
+
+      $("importBtn").addEventListener("click", function () {
+        $("importFileInput").click();
+      });
+      $("importFileInput").addEventListener("change", function (e) {
+        var file = e.target.files && e.target.files[0];
+        if (file) {
+          importConversation(file);
+          e.target.value = ""; // reset so same file can be re-imported
+        }
+      });
+
+      // Close open menus when clicking anywhere else
+      document.addEventListener("click", function (e) {
+        if (!e.target.closest(".conv-menu-dropdown") && !e.target.closest(".conv-menu-btn")) {
+          closeAllConvMenus();
+        }
+      });
 
       function syncLeftSidebarVar() {
         var isCollapsed = $("sidebar").classList.contains("collapsed");
