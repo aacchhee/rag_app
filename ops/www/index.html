@@ -494,7 +494,7 @@
         menuBtn.onclick = (function (cid) {
           return function (e) {
             e.stopPropagation();
-            toggleConvMenu(cid, menuBtn);
+            toggleConvMenu(cid, e);
           };
         })(id);
 
@@ -517,7 +517,7 @@
     /**
      * Show the overflow menu (download / rename / delete) for a conversation.
      */
-    function toggleConvMenu(cid, anchorBtn) {
+    function toggleConvMenu(cid, clickEvent) {
       var existing = document.getElementById("conv-menu-" + cid);
       if (existing) {
         existing.remove();
@@ -557,9 +557,11 @@
 
       document.body.appendChild(dd);
 
-      var rect = anchorBtn.getBoundingClientRect();
-      dd.style.top = (rect.bottom + 4) + "px";
-      dd.style.left = (rect.left - 80) + "px";
+      void dd.offsetHeight; // force reflow for real dimensions
+      var ddWidth = dd.offsetWidth || 140;
+
+      dd.style.top = (clickEvent.clientY + 12) + "px";
+      dd.style.left = Math.max(4, clickEvent.clientX - ddWidth + 12) + "px";
     }
 
     function renameConversation(id) {

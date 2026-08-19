@@ -129,6 +129,7 @@ body {
 }
 
 .conversations-list li {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -158,24 +159,30 @@ body {
 }
 
 .conversations-list li .conv-menu-btn {
-  background: none;
+  background: transparent;
   border: none;
-  color: #999;
+  color: #111;
   font-size: 15px;
+  font-weight: 700;
   cursor: pointer;
-  padding: 0 4px;
+  padding: 0 2px;
   line-height: 1;
   min-height: auto;
   display: none;
   letter-spacing: 1px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  align-items: center;
+  justify-content: center;
 }
 
 .conversations-list li:hover .conv-menu-btn {
-  display: inline-block;
+  display: inline-flex;
 }
 
 .conversations-list li .conv-menu-btn:hover {
-  color: #333;
+  color: #000;
 }
 
 .conv-menu-dropdown {
@@ -184,11 +191,11 @@ body {
   background: #fff;
   border: 1px solid #ddd;
   border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.12);
   display: flex;
   flex-direction: column;
-  min-width: 120px;
-  padding: 4px;
+  min-width: 140px;
+  padding: 5px;
 }
 
 .conv-menu-dropdown button {
