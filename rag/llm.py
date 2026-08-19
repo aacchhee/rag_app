@@ -130,11 +130,12 @@ def _invoke_once(
     temperature: float,
     max_tokens: int,
     chat_model: str | None = None,
-    enable_thinking: bool = False,
     attempt: str = "primary",
 ) -> tuple[str, dict[str, Any]]:
     resolved_chat_model = Config.resolve_chat_model(chat_model)
-    extra_body = Config.chat_extra_body(enable_thinking=enable_thinking)
+    extra_body = None
+    if "kimi" in resolved_chat_model.lower():
+        extra_body = {"chat_template_kwargs": {"thinking": False}}
     client = _get_raw_client()
 
     started = time.perf_counter()
@@ -284,7 +285,9 @@ def chat_completion_stream(
 
     try:
         resolved_chat_model = Config.resolve_chat_model(chat_model)
-        extra_body = Config.chat_extra_body(enable_thinking=Config.chat_enable_thinking())
+        extra_body = None
+        if "kimi" in resolved_chat_model.lower():
+            extra_body = {"chat_template_kwargs": {"thinking": False}}
         client = _get_raw_client()
         started = time.perf_counter()
 
