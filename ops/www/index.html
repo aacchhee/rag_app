@@ -6,6 +6,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>RAG Assistant</title>
 
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 
   <!-- Marked.js -->
@@ -29,9 +32,9 @@
   <div class="wrap">
     <!-- Left sidebar: conversations -->
     <div class="sidebar" id="sidebar">
-      <h1 class="sidebar-title">Notes-first RAG</h1>
+      <h1 class="sidebar-title">AndreyGPT</h1>
       <div class="sidebar-header">
-        <h2>Conversations</h2>
+        <h2>Chats</h2>
         <div class="sidebar-header-actions">
           <button class="import-btn" id="importBtn" type="button" title="Import conversation">Import</button>
           <input type="file" id="importFileInput" accept=".json" style="display:none;">
@@ -51,7 +54,7 @@
         <div class="messages-area" id="messagesArea">
           <div id="welcome" style="display:flex; align-items:center; justify-content:center; flex:1; height:100%;">
             <div style="text-align:center; color:#999;">
-              <div style="font-size:38px; margin-bottom:12px;">💬</div>
+              <div style="font-size:38px; margin-bottom:12px;">📏</div>
               <div style="font-size:18px; font-weight:500;">Let's math!</div>
             </div>
           </div>
@@ -491,12 +494,12 @@
         menuBtn.className = "conv-menu-btn";
         menuBtn.textContent = "…";
         menuBtn.title = "More";
-        menuBtn.onclick = (function (cid) {
+        menuBtn.onclick = (function (cid, btn) {
           return function (e) {
             e.stopPropagation();
-            toggleConvMenu(cid, e);
+            toggleConvMenu(cid, e, btn);
           };
-        })(id);
+        })(id, menuBtn);
 
         li.appendChild(span);
         li.appendChild(menuBtn);
@@ -517,7 +520,7 @@
     /**
      * Show the overflow menu (download / rename / delete) for a conversation.
      */
-    function toggleConvMenu(cid, clickEvent) {
+    function toggleConvMenu(cid, clickEvent, anchorBtn) {
       var existing = document.getElementById("conv-menu-" + cid);
       if (existing) {
         existing.remove();
@@ -557,11 +560,11 @@
 
       document.body.appendChild(dd);
 
-      void dd.offsetHeight; // force reflow for real dimensions
-      var ddWidth = dd.offsetWidth || 140;
-
-      dd.style.top = (clickEvent.clientY + 12) + "px";
-      dd.style.left = Math.max(4, clickEvent.clientX - ddWidth + 12) + "px";
+      var btnRect = anchorBtn.getBoundingClientRect();
+      dd.style.position = 'fixed';
+      dd.style.top = (btnRect.bottom + 4) + 'px';
+      dd.style.right = (window.innerWidth - btnRect.right) + 'px';
+      dd.style.left = 'auto';
     }
 
     function renameConversation(id) {
@@ -742,14 +745,14 @@
 
     function openRightSidebar() {
       $("rightSidebar").classList.remove("collapsed");
-      syncRightTogglePosition();
+      animateSync(syncRightTogglePosition);
     }
 
     function closeRightSidebar() {
       var sidebar = $("rightSidebar");
       sidebar.classList.add("collapsed");
       sidebar.style.width = "";
-      syncRightTogglePosition();
+      animateSync(syncRightTogglePosition);
     }
 
     function syncRightTogglePosition() {
@@ -1044,22 +1047,26 @@
 
         // User bubble
         html += '<div class="chat-bubble user">';
-        html += '<div class="chat-bubble-label">You</div>';
         html += '<div class="chat-bubble-content">' + escapeHtml(turn.question) + '</div>';
+        html += '<div class="message-meta">You</div>';
         html += '</div>';
 
-        // Assistant bubble
+        // Assistant bubble — avatar on the left like the mockup
         html += '<div class="chat-bubble assistant">';
-        html += '<div class="chat-bubble-label">Assistant</div>';
+        html += '<div class="assistant-row">';
+        html += '<div class="assistant-avatar" aria-hidden="true">RAG</div>';
+        html += '<div class="assistant-body">';
+        html += '<div class="assistant-label">Assistant <span>&middot;</span> <small>based on your materials</small></div>';
         html += '<div class="chat-bubble-content">' + renderMarkdown(turn.answer) + '</div>';
         if (turn.coverage) {
-          html += '<div class="chat-bubble-meta"><span class="pill">' + escapeHtml(turn.coverage) + '</span></div>';
+          html += '<div class="chat-bubble-meta"><span class="pill"><span></span> coverage: ' + escapeHtml(turn.coverage) + '</span></div>';
         }
+        html += '</div>'; // .assistant-body
+        html += '</div>'; // .assistant-row
         html += '</div>';
       }
 
       scroll.innerHTML = html;
-      // Scroll to bottom
       scroll.scrollTop = scroll.scrollHeight;
       typesetMath();
     }
@@ -1077,19 +1084,25 @@
       var userBubble = document.createElement("div");
       userBubble.className = "chat-bubble user";
       userBubble.innerHTML =
-        '<div class="chat-bubble-label">You</div>' +
-        '<div class="chat-bubble-content">' + escapeHtml(question) + '</div>';
+        '<div class="chat-bubble-content">' + escapeHtml(question) + '</div>' +
+        '<div class="message-meta">You</div>';
       scroll.appendChild(userBubble);
 
       // Assistant bubble (streaming target)
       var assistantBubble = document.createElement("div");
       assistantBubble.className = "chat-bubble assistant";
       assistantBubble.innerHTML =
-        '<div class="chat-bubble-label">Assistant</div>' +
-        '<div class="chat-bubble-content streaming-cursor" id="chatStreamTarget">' +
-        '<div class="thinking">' +
-        '<div class="thinking-dots"><span></span><span></span><span></span></div>' +
-        ' Thinking…</div>' +
+        '<div class="assistant-row">' +
+          '<div class="assistant-avatar" aria-hidden="true">RAG</div>' +
+          '<div class="assistant-body">' +
+            '<div class="assistant-label">Assistant <span>&middot;</span> <small>based on your materials</small></div>' +
+            '<div class="chat-bubble-content streaming-cursor" id="chatStreamTarget">' +
+              '<div class="thinking">' +
+                '<div class="thinking-dots"><span></span><span></span><span></span></div>' +
+                ' Thinking…' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
         '</div>';
       scroll.appendChild(assistantBubble);
 
@@ -1281,11 +1294,10 @@
         if (coverage) {
           var metaDiv = document.createElement("div");
           metaDiv.className = "chat-bubble-meta";
-          metaDiv.innerHTML = '<span class="pill">' + escapeHtml(coverage) + '</span>';
+          metaDiv.innerHTML = '<span class="pill"><span></span> coverage: ' + escapeHtml(coverage) + '</span>';
           target.parentElement.appendChild(metaDiv);
         }
       }
-
     }
 
     // Mode switching
@@ -1746,12 +1758,39 @@
         $("sidebar").parentElement.style.setProperty("--ls-width", isCollapsed ? "0px" : "260px");
       }
 
+      function syncLeftTogglePosition() {
+        var sidebar = $("sidebar");
+        var toggle = $("sidebarToggle");
+        if (sidebar.classList.contains("collapsed")) {
+          toggle.style.left = "12px";
+          return;
+        }
+        var rect = sidebar.getBoundingClientRect();
+        toggle.style.left = (rect.right + 8) + "px";
+      }
+
+      function animateSync(fn, duration) {
+        var start = performance.now();
+        function tick() {
+          fn();
+          if (performance.now() - start < (duration || 220)) {
+            requestAnimationFrame(tick);
+          } else {
+            fn();
+          }
+        }
+        tick();
+      }
+
       $("sidebarToggle").addEventListener("click", function () {
         $("sidebar").classList.toggle("collapsed");
         $("sidebarToggle").textContent = $("sidebar").classList.contains("collapsed") ? "▶" : "◀";
         syncLeftSidebarVar();
+        animateSync(syncLeftTogglePosition);
+        animateSync(syncRightTogglePosition);
       });
       syncLeftSidebarVar();
+      syncLeftTogglePosition();
 
       // Problem generation
       $("problemBtn").addEventListener("click", generateProblem);
@@ -1774,7 +1813,7 @@
         if (!$("rightSidebar").classList.contains("collapsed")) {
           $("rightSidebar").style.width = "";
         }
-        syncRightTogglePosition();
+        animateSync(syncRightTogglePosition);
       });
 
       // Custom left-edge resize (native resize handle is always right side)
@@ -1826,6 +1865,11 @@
       // Enter in answer field submits
       $("studentAnswer").addEventListener("keydown", function (e) {
         if ((e.ctrlKey || e.metaKey) && e.key === "Enter") submitAnswer();
+      });
+
+      window.addEventListener("resize", function () {
+        syncLeftTogglePosition();
+        syncRightTogglePosition();
       });
 
       window.addEventListener("error", function (e) {
