@@ -743,6 +743,19 @@
       $("rightAssessmentBox").style.display = "none";
     }
 
+    function animateSync(fn, duration) {
+      var start = performance.now();
+      function tick() {
+        fn();
+        if (performance.now() - start < (duration || 220)) {
+          requestAnimationFrame(tick);
+        } else {
+          fn();
+        }
+      }
+      tick();
+    }
+
     function openRightSidebar() {
       $("rightSidebar").classList.remove("collapsed");
       animateSync(syncRightTogglePosition);
@@ -1767,19 +1780,6 @@
         }
         var rect = sidebar.getBoundingClientRect();
         toggle.style.left = (rect.right + 8) + "px";
-      }
-
-      function animateSync(fn, duration) {
-        var start = performance.now();
-        function tick() {
-          fn();
-          if (performance.now() - start < (duration || 220)) {
-            requestAnimationFrame(tick);
-          } else {
-            fn();
-          }
-        }
-        tick();
       }
 
       $("sidebarToggle").addEventListener("click", function () {
