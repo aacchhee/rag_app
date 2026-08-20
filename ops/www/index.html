@@ -980,12 +980,21 @@
     }
 
     async function _submitAssessCore(studentAnswer, targetTitleId, targetBoxId, targetSubmitId, label) {
-      // Hide hint box when showing assessment
-      var hintTitleId = targetBoxId.startsWith("right") ? "rightHintTitle" : "hintTitle";
-      var hintBoxId = targetBoxId.startsWith("right") ? "rightHintBox" : "hintBox";
+      // Hide hint and answer boxes when showing assessment
+      var isRight = targetBoxId.startsWith("right");
+      var hintTitleId = isRight ? "rightHintTitle" : "hintTitle";
+      var hintBoxId   = isRight ? "rightHintBox"   : "hintBox";
+      var ansTitleId  = isRight ? "rightGeneratedAnswerTitle" : "generatedAnswerTitle";
+      var ansBoxId    = isRight ? "rightGeneratedAnswerBox"   : "generatedAnswerBox";
       $(hintTitleId).style.display = "none";
       $(hintBoxId).style.display = "none";
       $(hintBoxId).innerHTML = "";
+      $(ansTitleId).style.display = "none";
+      $(ansBoxId).classList.remove("visible");
+      $(ansBoxId).style.display = "none";
+      $(ansBoxId).innerHTML = "";
+      var ansBtnId = isRight ? "rightShowAnswerBtn" : "showAnswerBtn";
+      $(ansBtnId).textContent = "Show answer";
 
       $(targetTitleId).style.display = "block";
       $(targetBoxId).classList.add("visible");
@@ -1062,12 +1071,19 @@
         button.textContent = "Show answer";
         return;
       }
-      // Hide hint box when showing answer
-      var hintTitleId = targetBoxId.startsWith("right") ? "rightHintTitle" : "hintTitle";
-      var hintBoxId = targetBoxId.startsWith("right") ? "rightHintBox" : "hintBox";
+      // Hide hint and assessment boxes when showing answer
+      var isRight = targetBoxId.startsWith("right");
+      var hintTitleId = isRight ? "rightHintTitle" : "hintTitle";
+      var hintBoxId   = isRight ? "rightHintBox"   : "hintBox";
+      var ascTitleId  = isRight ? "rightAssessmentTitle" : "assessmentTitle";
+      var ascBoxId    = isRight ? "rightAssessmentBox"   : "assessmentBox";
       $(hintTitleId).style.display = "none";
       $(hintBoxId).style.display = "none";
       $(hintBoxId).innerHTML = "";
+      $(ascTitleId).style.display = "none";
+      $(ascBoxId).classList.remove("visible");
+      $(ascBoxId).style.display = "none";
+      $(ascBoxId).innerHTML = "";
 
       $(targetTitleId).style.display = "block";
       box.style.display = "block";
