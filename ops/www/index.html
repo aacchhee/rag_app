@@ -912,17 +912,23 @@
       $(titleId).style.display = "block";
       $(boxId).style.display = "block";
       $(boxId).innerHTML = '<div class="thinking"></div>';
+      var hintRaw = "";
       try {
         var response = await fetch("/rag2/hint", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         if (!response.ok) throw new Error("HTTP " + response.status);
         logDebug("Hint response", responseDebugInfo(response));
-        $(boxId).innerHTML = "";
         await readEventStream(response, function (event, data) {
           if (event === "token") {
-            $(boxId).innerHTML += renderMarkdown(data.content || "");
+            hintRaw += data.content || "";
+            $(boxId).innerHTML = renderMarkdown(hintRaw);
+            $(boxId).classList.add("streaming-cursor");
+            clearTimeout(mathRenderTimer);
+            mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
             return;
           }
           if (event === "done") {
+            $(boxId).classList.remove("streaming-cursor");
+            $(boxId).innerHTML = renderMarkdown(hintRaw);
             typesetMath();
           }
         });
