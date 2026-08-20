@@ -890,6 +890,24 @@
       var btnId = isRight ? "rightHintBtn" : "hintBtn";
       var boxId = isRight ? "rightHintBox" : "hintBox";
       var titleId = isRight ? "rightHintTitle" : "hintTitle";
+
+      // Hide other output boxes
+      if (isRight) {
+        $("rightGeneratedAnswerTitle").style.display = "none";
+        $("rightGeneratedAnswerBox").classList.remove("visible");
+        $("rightGeneratedAnswerBox").style.display = "none";
+        $("rightAssessmentTitle").style.display = "none";
+        $("rightAssessmentBox").classList.remove("visible");
+        $("rightAssessmentBox").style.display = "none";
+      } else {
+        $("generatedAnswerTitle").style.display = "none";
+        $("generatedAnswerBox").classList.remove("visible");
+        $("generatedAnswerBox").style.display = "none";
+        $("assessmentTitle").style.display = "none";
+        $("assessmentBox").classList.remove("visible");
+        $("assessmentBox").style.display = "none";
+      }
+
       $(btnId).disabled = true;
       $(titleId).style.display = "block";
       $(boxId).style.display = "block";
@@ -962,6 +980,13 @@
     }
 
     async function _submitAssessCore(studentAnswer, targetTitleId, targetBoxId, targetSubmitId, label) {
+      // Hide hint box when showing assessment
+      var hintTitleId = targetBoxId.startsWith("right") ? "rightHintTitle" : "hintTitle";
+      var hintBoxId = targetBoxId.startsWith("right") ? "rightHintBox" : "hintBox";
+      $(hintTitleId).style.display = "none";
+      $(hintBoxId).style.display = "none";
+      $(hintBoxId).innerHTML = "";
+
       $(targetTitleId).style.display = "block";
       $(targetBoxId).classList.add("visible");
       $(targetBoxId).style.display = "block";
@@ -1037,6 +1062,13 @@
         button.textContent = "Show answer";
         return;
       }
+      // Hide hint box when showing answer
+      var hintTitleId = targetBoxId.startsWith("right") ? "rightHintTitle" : "hintTitle";
+      var hintBoxId = targetBoxId.startsWith("right") ? "rightHintBox" : "hintBox";
+      $(hintTitleId).style.display = "none";
+      $(hintBoxId).style.display = "none";
+      $(hintBoxId).innerHTML = "";
+
       $(targetTitleId).style.display = "block";
       box.style.display = "block";
       box.innerHTML = renderMarkdown(currentGeneratedAnswerRaw);

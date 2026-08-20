@@ -1255,7 +1255,8 @@ details > summary.box-title {
   display: block;
 }
 
-.assessment-box {
+.assessment-box,
+.hint-box {
   margin-top: 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -1264,7 +1265,8 @@ details > summary.box-title {
   display: none;
 }
 
-.assessment-box.visible {
+.assessment-box.visible,
+.hint-box.visible {
   display: block;
 }
 
