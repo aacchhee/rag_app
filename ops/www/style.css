@@ -1206,6 +1206,7 @@ details > summary.box-title {
 .submit-answer-btn,
 .show-answer-btn,
 .new-problem-btn,
+.hint-btn,
 .generate-task-button {
   height: 40px;
   padding: 0 15px;
@@ -1226,6 +1227,7 @@ details > summary.box-title {
 .submit-answer-btn:hover,
 .show-answer-btn:hover,
 .new-problem-btn:hover,
+.hint-btn:hover,
 .generate-task-button:hover {
   background: var(--green);
   color: white;
@@ -1236,6 +1238,7 @@ details > summary.box-title {
 .submit-answer-btn:disabled,
 .show-answer-btn:disabled,
 .new-problem-btn:disabled,
+.hint-btn:disabled,
 .generate-task-button:disabled,
 .generate-task-button.loading {
   opacity: .55;

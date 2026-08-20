@@ -32,7 +32,7 @@
   <div class="wrap">
     <!-- Left sidebar: conversations -->
     <div class="sidebar" id="sidebar">
-      <h1 class="sidebar-title">AndreyGPT</h1>
+      <h1 class="sidebar-title">IMF GPT</h1>
       <div class="sidebar-header">
         <h2>Chats</h2>
         <div class="sidebar-header-actions">
@@ -84,6 +84,7 @@
                 <textarea id="studentAnswer" class="answer-input"
                   placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
                 <div class="row">
+                  <button id="hintBtn" class="hint-btn" type="button">💡</button>
                   <button id="submitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
                   <button id="showAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
                   <button id="newProblemBtn" class="new-problem-btn" type="button">New problem</button>
@@ -92,6 +93,8 @@
 
               <h3 id="generatedAnswerTitle" class="box-title" style="display:none;">Answer</h3>
               <div id="generatedAnswerBox" class="generated-answer-box answer"></div>
+              <h3 id="hintTitle" class="box-title" style="display:none;">Hint</h3>
+              <div id="hintBox" class="hint-box" style="display:none;"></div>
               <h3 id="assessmentTitle" class="box-title" style="display:none;">Assessment</h3>
               <div id="assessmentBox" class="assessment-box"></div>
             </div>
@@ -168,6 +171,7 @@
             <textarea id="rightStudentAnswer" class="answer-input"
               placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
             <div class="row">
+              <button id="rightHintBtn" class="hint-btn" type="button">💡</button>
               <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
               <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
               <button id="rightNewProblemBtn" class="new-problem-btn" type="button">New problem</button>
@@ -176,6 +180,8 @@
 
           <h3 id="rightGeneratedAnswerTitle" class="box-title" style="display:none;">Answer</h3>
           <div id="rightGeneratedAnswerBox" class="generated-answer-box answer" style="display:none;"></div>
+          <h3 id="rightHintTitle" class="box-title" style="display:none;">Hint</h3>
+          <div id="rightHintBox" class="hint-box" style="display:none;"></div>
           <h3 id="rightAssessmentTitle" class="box-title" style="display:none;">Assessment</h3>
           <div id="rightAssessmentBox" class="assessment-box" style="display:none;"></div>
         </div>
@@ -874,6 +880,39 @@
       renderProblemTabs();
       renderActiveProblem();
       if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, problems);
+    }
+
+    // --- Hint ---
+    async function requestHint(isRight) {
+      var problemText = currentProblemRaw || "";
+      if (!problemText) return;
+      var payload = applySelectedChatModel({ problem: problemText });
+      var btnId = isRight ? "rightHintBtn" : "hintBtn";
+      var boxId = isRight ? "rightHintBox" : "hintBox";
+      var titleId = isRight ? "rightHintTitle" : "hintTitle";
+      $(btnId).disabled = true;
+      $(titleId).style.display = "block";
+      $(boxId).style.display = "block";
+      $(boxId).innerHTML = '<div class="thinking"></div>';
+      try {
+        var response = await fetch("/rag2/hint", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        logDebug("Hint response", responseDebugInfo(response));
+        $(boxId).innerHTML = "";
+        await readEventStream(response, function (event, data) {
+          if (event === "token") {
+            $(boxId).innerHTML += renderMarkdown(data.content || "");
+            return;
+          }
+          if (event === "done") {
+            typesetMath();
+          }
+        });
+      } catch (err) {
+        $(boxId).innerText = "Hint failed: " + err.message;
+      } finally {
+        $(btnId).disabled = false;
+      }
     }
 
     // --- Shared problem / answer / assessment cores ---
@@ -1803,6 +1842,10 @@
 
       // Submit answer for assessment (single mode)
       $("submitAnswerBtn").addEventListener("click", submitAnswer);
+
+      // Hint buttons
+      $("hintBtn").addEventListener("click", function () { requestHint(); });
+      $("rightHintBtn").addEventListener("click", function () { requestHint(true); });
 
       // Right sidebar event listeners
       $("rightSidebarToggle").addEventListener("click", function () {

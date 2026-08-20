@@ -998,6 +998,68 @@ def calculate_answer():
     return _stream_response(generate())
 
 
+# Hint endpoint
+@app.post("/hint")
+def generate_hint():
+    data = request.get_json(force=True) or {}
+    request_id = current_request_id()
+
+    problem = (data.get("problem") or "").strip()
+    chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
+    if error_response:
+        return error_response
+
+    if not problem:
+        return jsonify(error="Missing 'problem'", request_id=request_id), 400
+
+    app.logger.info(
+        "[req:%s] /hint problem_len=%d chat_model=%s",
+        request_id,
+        len(problem),
+        chat_model,
+    )
+
+    def generate():
+        yield _sse("meta", {"request_id": request_id, "chat_model": chat_model})
+        yield _sse("status", {"phase": "thinking"})
+
+        system_h = (
+            "You are a helpful tutor. A student is stuck on a math problem.\n"
+            "Give them ONE small hint. Do NOT solve the problem.\n"
+            "Do NOT give the answer or reveal the full method.\n"
+            "Just nudge the student toward the correct approach.\n\n"
+            "Output format:\n"
+            "**Hint:**\n"
+            "(one sentence hint)\n"
+        )
+
+        user_h = (
+            "I am stuck on this problem:\n\n"
+            + problem
+            + "\n\nGive me one hint."
+        )
+
+        yield _sse("status", {"phase": "generating"})
+
+        raw = ""
+        for token in chat_completion_stream(
+            [{"role": "system", "content": system_h}, {"role": "user", "content": user_h}],
+            temperature=0.4, max_tokens=300,
+            chat_model=chat_model,
+        ):
+            raw += token
+            yield _sse("token", {"content": token})
+
+        app.logger.info(
+            "[req:%s] /hint complete raw_len=%d",
+            request_id,
+            len(raw),
+        )
+        yield _sse("done", {"request_id": request_id, "chat_model": chat_model, "ok": True})
+
+    return _stream_response(generate())
+
+
 # Answer assessment endpoint
 @app.post("/assess")
 def assess_answer():
