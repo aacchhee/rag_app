@@ -80,10 +80,17 @@ def collect_files() -> list[Path]:
 
 
 def list_courses() -> list[str]:
-    """Return sorted list of existing course folder names."""
-    if not COURSES_DIR.exists():
-        return []
-    return sorted([p.name for p in COURSES_DIR.iterdir() if p.is_dir()])
+    """Return sorted list of courses from both uploaded PDF folders and the ingest manifest."""
+    courses: set[str] = set()
+    if COURSES_DIR.exists():
+        courses.update(p.name for p in COURSES_DIR.iterdir() if p.is_dir())
+    manifest = _load_manifest()
+    if manifest:
+        for meta in manifest.get("sources", {}).values():
+            course = meta.get("course")
+            if course:
+                courses.add(course)
+    return sorted(courses)
 
 
 def _manifest_path() -> Path:
