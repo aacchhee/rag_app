@@ -27,7 +27,7 @@ COURSES_DIR = Path("/app/data/courses")
 
 
 def _course_for(f: Path) -> str | None:
-    """Return course name inferred from the parent folder under COURSES_DIR, or None."""
+    """Return course name inferred from file location, or None."""
     try:
         rel = f.relative_to(COURSES_DIR)
         parts = rel.parts
@@ -35,9 +35,8 @@ def _course_for(f: Path) -> str | None:
     except ValueError:
         pass
     try:
-        rel = f.relative_to(REPO_DIR / "_includes")
-        parts = rel.parts
-        return parts[0] if len(parts) > 1 else None
+        rel = f.relative_to(REPO_DIR)
+        return "IMAx2024"
     except ValueError:
         pass
     return None
