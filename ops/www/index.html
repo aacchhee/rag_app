@@ -1172,14 +1172,19 @@
           var prob = item.data;
           var preview = _problemPreviewText(prob.problem);
           var isActive = item.index === activeProblemIndex;
-          html += '<div class="problem-card-chat' + (isActive ? ' active' : '') + '" data-problem-index="' + item.index + '">';
-          html += '<div class="problem-card-header">';
-          html += '<span class="problem-card-title">' + (preview ? 'Practice Problem' : 'Problem ' + (item.index + 1)) + '</span>';
-          html += '</div>';
+          html += '<div class="chat-bubble assistant problem-bubble' + (isActive ? ' active' : '') + '" data-problem-index="' + item.index + '">';
+          html += '<div class="assistant-row">';
+          html += '<div class="assistant-avatar" aria-hidden="true">RAG</div>';
+          html += '<div class="assistant-body">';
+          html += '<div class="assistant-label">Assistant <span>&middot;</span> <small>generated problem</small></div>';
+          html += '<div class="chat-bubble-content">';
           if (preview) {
             html += '<div class="problem-card-preview">' + escapeHtml(preview) + '</div>';
           }
           html += '<button class="problem-card-btn" data-problem-index="' + item.index + '">Open Problem</button>';
+          html += '</div>';
+          html += '</div>';
+          html += '</div>';
           html += '</div>';
         }
       }
