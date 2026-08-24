@@ -172,7 +172,8 @@
               <button id="rightHintBtn" class="hint-btn" type="button">💡</button>
               <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
               <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
-              <button id="rightNewProblemBtn" class="new-problem-btn" type="button">New problem</button>
+              <button id="rightEasierBtn" class="new-problem-btn" type="button">Easier</button>
+              <button id="rightHarderBtn" class="new-problem-btn" type="button">Harder</button>
             </div>
           </div>
 
@@ -1458,13 +1459,13 @@
     }
 
     // Problem generation
-    async function generateProblem() {
+    // difficultyAdjustment: "", "easier", or "harder"
+    async function generateProblem(difficultyAdjustment) {
       setError("");
       currentProblemRaw = "";
       currentGeneratedAnswerRaw = "";
 
       if (isChatMode) {
-        // Right sidebar flow for chat mode
         resetRightSidebarAssessmentUI();
         $("rightSidebarWelcome").style.display = "none";
         $("rightProblemArea").style.display = "block";
@@ -1475,7 +1476,6 @@
         showThinking("rightProblemContent");
         openRightSidebar();
       } else {
-        // Inline flow for single mode
         resetGeneratedAnswerUI();
         $("problemSection").style.display = "block";
         $("problemSection").classList.add("visible");
@@ -1488,33 +1488,53 @@
       $("problemBtn").disabled = true;
       $("newProblemBtn").disabled = true;
       $("submitAnswerBtn").disabled = true;
-      $("rightNewProblemBtn").disabled = true;
       $("rightSubmitAnswerBtn").disabled = true;
+      $("rightEasierBtn").disabled = true;
+      $("rightHarderBtn").disabled = true;
       setStatus("Generating problem…");
 
       try {
         var payload;
+        var chatPayloadBase;
         if (isChatMode) {
           logDebug("Problem request start (chat mode)", {
             turns: chatHistory.length,
+            adjustment: difficultyAdjustment || "none",
             chatModel: getSelectedChatModel() || "(default)"
           });
-          payload = applySelectedCourse(applySelectedChatModel({
+          chatPayloadBase = {
             conversation_context: buildConversationContext(),
             difficulty: $("problemDifficulty").value
-          }));
+          };
         } else {
           logDebug("Problem request start", {
             questionLen: (lastSingleQuestion || "").length,
             notesLen: (lastNotesAnswer || "").length,
+            adjustment: difficultyAdjustment || "none",
             chatModel: getSelectedChatModel() || "(default)"
           });
-          payload = applySelectedCourse(applySelectedChatModel({
+          chatPayloadBase = {
             question: lastSingleQuestion,
             notes_answer: lastNotesAnswer,
             difficulty: $("problemDifficulty").value
-          }));
+          };
         }
+
+        if (difficultyAdjustment) {
+          chatPayloadBase.difficulty_adjustment = difficultyAdjustment;
+          var prevProb = "";
+          if (activeProblemIndex >= 0 && activeProblemIndex < problems.length) {
+            prevProb = problems[activeProblemIndex].problem || "";
+          }
+          if (!prevProb && currentProblemRaw) {
+            prevProb = currentProblemRaw;
+          }
+          if (prevProb) {
+            chatPayloadBase.previous_problem = prevProb;
+          }
+        }
+
+        payload = applySelectedCourse(applySelectedChatModel(chatPayloadBase));
 
         var response = await fetch("/rag2/problem", {
           method: "POST",
@@ -1593,7 +1613,8 @@
       } finally {
         $("problemBtn").disabled = false;
         $("newProblemBtn").disabled = false;
-        $("rightNewProblemBtn").disabled = false;
+        $("rightEasierBtn").disabled = false;
+        $("rightHarderBtn").disabled = false;
       }
     }
 
@@ -1968,7 +1989,8 @@
         });
       })();
 
-      $("rightNewProblemBtn").addEventListener("click", generateProblem);
+      $("rightEasierBtn").addEventListener("click", function () { generateProblem("easier"); });
+      $("rightHarderBtn").addEventListener("click", function () { generateProblem("harder"); });
 
       $("rightShowAnswerBtn").addEventListener("click", toggleRightGeneratedAnswer);
 

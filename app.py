@@ -816,6 +816,10 @@ def generate_problem():
     difficulty = (data.get("difficulty") or "medium").strip().lower()
     if difficulty not in ("easy", "medium", "hard"):
         difficulty = "medium"
+    difficulty_adjustment = (data.get("difficulty_adjustment") or "").strip().lower()
+    if difficulty_adjustment not in ("", "easier", "harder"):
+        difficulty_adjustment = ""
+    previous_problem = (data.get("previous_problem") or "").strip()
     chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
     if error_response:
         return error_response
@@ -869,8 +873,17 @@ def generate_problem():
         if notes_answer:
             user_p += "\n\nThe answer given to the student (for context):\n" + notes_answer
 
+        if previous_problem:
+            user_p += "\n\nPrevious problem the student solved:\n" + previous_problem
+
         user_p += f"\n\nDifficulty level: {difficulty}."
-        user_p += "\n\nGenerate one practice problem related to this topic."
+
+        if difficulty_adjustment == "easier":
+            user_p += " The previous problem was too hard. Generate an EASIER problem on the same topic—simpler numbers, fewer steps, or more direct application."
+        elif difficulty_adjustment == "harder":
+            user_p += " The previous problem was too easy. Generate a HARDER problem on the same topic—more complex calculations, multiple concepts combined, or less guidance embedded in the statement."
+        else:
+            user_p += " Generate one practice problem related to this topic."
 
         yield _sse("status", {"phase": "generating"})
 
