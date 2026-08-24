@@ -1923,10 +1923,10 @@
       syncLeftTogglePosition();
 
       // Problem generation
-      $("problemBtn").addEventListener("click", generateProblem);
+      $("problemBtn").addEventListener("click", function () { generateProblem(); });
 
       // New problem button (single mode)
-      $("newProblemBtn").addEventListener("click", generateProblem);
+      $("newProblemBtn").addEventListener("click", function () { generateProblem(); });
 
       // Reveal generated answer (single mode)
       $("showAnswerBtn").addEventListener("click", toggleGeneratedAnswer);
