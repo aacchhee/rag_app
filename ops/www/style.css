@@ -494,35 +494,6 @@ select {
   padding: 20px 0;
 }
 
-.problem-tabs {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--line);
-}
-
-.problem-tab {
-  background: rgba(255,255,255,.5);
-  color: #333;
-  border: none;
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: left;
-}
-
-.problem-tab:hover {
-  background: rgba(255,255,255,.8);
-}
-
-.problem-tab.active {
-  background: var(--green);
-  color: #fff;
-}
-
 /* Sticky input bar at bottom — floating composer */
 .input-bar {
   position: sticky;
@@ -1416,4 +1387,67 @@ details > summary.box-title {
   text-align: center;
   color: #a0a7a2;
   font-size: 10px;
+}
+
+/* Problem card rendered inside chat stream */
+.problem-card-chat {
+  max-width: 610px;
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--task-line);
+  border-radius: 12px;
+  background: var(--task-bg);
+  box-shadow: 0 3px 10px rgba(61, 58, 37, .04);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.problem-card-chat.active {
+  border-color: #aec0af;
+  box-shadow: 0 3px 14px rgba(25, 79, 59, .08);
+}
+
+.problem-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.problem-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--green);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.problem-card-preview {
+  font-size: 14px;
+  color: #6b766f;
+  line-height: 1.5;
+}
+
+.problem-card-btn {
+  align-self: flex-start;
+  height: 34px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #aec0af;
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: .2s;
+}
+
+.problem-card-btn:hover {
+  background: var(--green);
+  color: white;
+  border-color: var(--green);
+  transform: translateY(-1px);
 }

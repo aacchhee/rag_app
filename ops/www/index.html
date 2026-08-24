@@ -156,8 +156,6 @@
       <div class="right-sidebar-header">
         <h2 class="right-sidebar-title">Practice Problems</h2>
       </div>
-      <!-- Problem tabs -->
-      <div class="problem-tabs" id="problemTabs" style="display:none;"></div>
       <!-- Scrollable content -->
       <div class="right-sidebar-content" id="rightSidebarContent">
         <div class="right-sidebar-welcome" id="rightSidebarWelcome">
@@ -662,9 +660,9 @@
       renderSidebar();
       resetRightSidebarProblemUI();
       resetRightSidebarAssessmentUI();
-      renderProblemTabs();
       $("rightSidebarWelcome").style.display = "flex";
       $("rightProblemArea").style.display = "none";
+      $("rightSidebarTitle").textContent = "Practice Problems";
       $("rightStudentAnswer").value = "";
       $("welcome").style.display = "flex";
       $("problemBtn").style.display = "none";
@@ -684,7 +682,6 @@
       currentConvId = id;
       $("welcome").style.display = "none";
       resetRightSidebarAssessmentUI();
-      renderProblemTabs();
       if (problems.length > 0) {
         activeProblemIndex = problems.length - 1;
         renderActiveProblem();
@@ -787,31 +784,6 @@
       toggle.style.right = "auto";
     }
 
-    // --- Problem tabs ---
-    function renderProblemTabs() {
-      var tabsEl = $("problemTabs");
-      tabsEl.innerHTML = "";
-      if (problems.length === 0) {
-        tabsEl.style.display = "none";
-        return;
-      }
-      tabsEl.style.display = "flex";
-      for (var i = 0; i < problems.length; i++) {
-        var btn = document.createElement("button");
-        btn.className = "problem-tab";
-        btn.textContent = "Problem " + (i + 1);
-        if (i === activeProblemIndex) btn.classList.add("active");
-        btn.onclick = (function (idx) {
-          return function () {
-            activeProblemIndex = idx;
-            renderProblemTabs();
-            renderActiveProblem();
-          };
-        })(i);
-        tabsEl.appendChild(btn);
-      }
-    }
-
     function renderActiveProblem() {
       if (activeProblemIndex < 0 || activeProblemIndex >= problems.length) return;
       var prob = problems[activeProblemIndex];
@@ -820,6 +792,7 @@
 
       $("rightSidebarWelcome").style.display = "none";
       $("rightProblemArea").style.display = "block";
+      $("rightSidebarTitle").textContent = "Problem " + (activeProblemIndex + 1);
       $("rightProblemContent").innerHTML = renderMarkdown(currentProblemRaw);
       $("rightProblemContent").classList.remove("streaming-cursor");
       $("rightAnswerInputArea").classList.add("visible");
@@ -856,6 +829,7 @@
       }
 
       typesetMath();
+      renderChatConversation();
     }
 
     function updateActiveProblemState() {
@@ -873,11 +847,11 @@
         generated_answer: generatedAnswer || "",
         student_answer: "",
         assessment: "",
-        generated_answer_shown: false
+        generated_answer_shown: false,
+        createdAt: Date.now()
       };
       problems.push(prob);
       activeProblemIndex = problems.length - 1;
-      renderProblemTabs();
       renderActiveProblem();
       if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, problems);
     }
@@ -1140,36 +1114,74 @@
     }
 
     // Chat rendering
+    function _problemPreviewText(problemRaw) {
+      if (!problemRaw) return "";
+      var text = problemRaw.replace(/^\s*\*\*Problem:?\*\*\s*/i, "").trim();
+      text = text.replace(/\n/g, " ");
+      return text.length > 80 ? text.slice(0, 77) + "…" : text;
+    }
+
     function renderChatConversation() {
       var scroll = $("chatScroll");
-      if (chatHistory.length === 0) {
+      if (chatHistory.length === 0 && problems.length === 0) {
         scroll.innerHTML = '<div style="padding:30px;text-align:center;color:#aaa;">Start a conversation by asking a question.</div>';
         return;
       }
 
-      var html = "";
+      // Build a unified timeline of all items
+      var timeline = [];
       for (var i = 0; i < chatHistory.length; i++) {
         var turn = chatHistory[i];
+        var ts = turn.createdAt || (i * 10);
+        timeline.push({ type: 'user',   data: turn.question, createdAt: ts, sortOrder: 0, index: i });
+        timeline.push({ type: 'assistant', data: turn, createdAt: ts, sortOrder: 1, index: i });
+      }
+      for (var p = 0; p < problems.length; p++) {
+        var prob = problems[p];
+        var pts = prob.createdAt || (1000000 + p * 10);
+        timeline.push({ type: 'problem', data: prob, createdAt: pts, sortOrder: 2, index: p });
+      }
+      timeline.sort(function(a, b) {
+        if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
+        return a.sortOrder - b.sortOrder;
+      });
 
-        // User bubble
-        html += '<div class="chat-bubble user">';
-        html += '<div class="chat-bubble-content">' + escapeHtml(turn.question) + '</div>';
-        html += '<div class="message-meta">You</div>';
-        html += '</div>';
-
-        // Assistant bubble — avatar on the left like the mockup
-        html += '<div class="chat-bubble assistant">';
-        html += '<div class="assistant-row">';
-        html += '<div class="assistant-avatar" aria-hidden="true">RAG</div>';
-        html += '<div class="assistant-body">';
-        html += '<div class="assistant-label">Assistant <span>&middot;</span> <small>based on your materials</small></div>';
-        html += '<div class="chat-bubble-content">' + renderMarkdown(turn.answer) + '</div>';
-        if (turn.coverage) {
-          html += '<div class="chat-bubble-meta"><span class="pill"><span></span> coverage: ' + escapeHtml(turn.coverage) + '</span></div>';
+      var html = "";
+      for (var j = 0; j < timeline.length; j++) {
+        var item = timeline[j];
+        if (item.type === 'user') {
+          html += '<div class="chat-bubble user">';
+          html += '<div class="chat-bubble-content">' + escapeHtml(item.data) + '</div>';
+          html += '<div class="message-meta">You</div>';
+          html += '</div>';
+        } else if (item.type === 'assistant') {
+          var turn = item.data;
+          html += '<div class="chat-bubble assistant">';
+          html += '<div class="assistant-row">';
+          html += '<div class="assistant-avatar" aria-hidden="true">RAG</div>';
+          html += '<div class="assistant-body">';
+          html += '<div class="assistant-label">Assistant <span>&middot;</span> <small>based on your materials</small></div>';
+          html += '<div class="chat-bubble-content">' + renderMarkdown(turn.answer) + '</div>';
+          if (turn.coverage) {
+            html += '<div class="chat-bubble-meta"><span class="pill"><span></span> coverage: ' + escapeHtml(turn.coverage) + '</span></div>';
+          }
+          html += '</div>';
+          html += '</div>';
+          html += '</div>';
+        } else if (item.type === 'problem') {
+          var prob = item.data;
+          var preview = _problemPreviewText(prob.problem);
+          var isActive = item.index === activeProblemIndex;
+          html += '<div class="problem-card-chat' + (isActive ? ' active' : '') + '" data-problem-index="' + item.index + '">';
+          html += '<div class="problem-card-header">';
+          html += '<span class="problem-card-title">' + (preview ? 'Practice Problem' : 'Problem ' + (item.index + 1)) + '</span>';
+          html += '</div>';
+          if (preview) {
+            html += '<div class="problem-card-preview">' + escapeHtml(preview) + '</div>';
+          }
+          html += '<button class="problem-card-btn" data-problem-index="' + item.index + '">Open Problem</button>';
+          html += '</div>';
         }
-        html += '</div>'; // .assistant-body
-        html += '</div>'; // .assistant-row
-        html += '</div>';
       }
 
       scroll.innerHTML = html;
@@ -1619,6 +1631,7 @@
       $("newProblemBtn").disabled = false;
 
       var question = $("q").value.trim();
+      var questionTime = Date.now();
       if (!question) {
         setError("Please enter a question.");
         return;
@@ -1691,7 +1704,8 @@
           chatHistory.push({
             question: question,
             answer: rawNotes,
-            coverage: streamCoverage
+            coverage: streamCoverage,
+            createdAt: questionTime
           });
           finalizeStreamingBubble(streamCoverage);
           autoSaveCurrentConversation();
@@ -1952,6 +1966,17 @@
       $("rightNewProblemBtn").addEventListener("click", generateProblem);
 
       $("rightShowAnswerBtn").addEventListener("click", toggleRightGeneratedAnswer);
+
+      // Click on problem cards in chat to open them in right sidebar
+      document.addEventListener("click", function (e) {
+        var btn = e.target.closest(".problem-card-btn");
+        if (!btn) return;
+        var idx = parseInt(btn.getAttribute("data-problem-index"), 10);
+        if (isNaN(idx)) return;
+        activeProblemIndex = idx;
+        renderActiveProblem();
+        openRightSidebar();
+      });
 
       $("rightSubmitAnswerBtn").addEventListener("click", submitRightAnswer);
 
