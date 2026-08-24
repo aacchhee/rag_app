@@ -104,6 +104,15 @@
           <div id="chatView" class="chat-container">
             <div class="chat-scroll" id="chatScroll"></div>
           </div>
+
+          <div class="problem-actions" id="problemActions" style="display:none;">
+            <button id="problemBtn" class="problem-action-btn" type="button">+ Generate Problem</button>
+            <select id="problemDifficulty">
+              <option value="easy">Easy</option>
+              <option value="medium" selected>Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
         </div>
 
         <!-- Sticky input bar at bottom -->
@@ -118,12 +127,6 @@
                 </svg>
               </button>
             </div>
-            <button id="problemBtn" class="problem-btn" type="button" style="display:none">Problem</button>
-            <select id="problemDifficulty" style="display:none">
-              <option value="easy">Easy</option>
-              <option value="medium" selected>Medium</option>
-              <option value="hard">Hard</option>
-            </select>
           </div>
 
           <div class="controls-row">
@@ -673,8 +676,7 @@
       $("rightSidebarTitle").textContent = "Practice Problems";
       $("rightStudentAnswer").value = "";
       $("welcome").style.display = "flex";
-      $("problemBtn").style.display = "none";
-      $("problemDifficulty").style.display = "none";
+      $("problemActions").style.display = "none";
     }
 
     function switchToConversation(id) {
@@ -698,8 +700,7 @@
         $("rightProblemArea").style.display = "none";
       }
       renderChatConversation();
-      $("problemBtn").style.display = chatHistory.length > 0 ? "inline-block" : "none";
-      $("problemDifficulty").style.display = chatHistory.length > 0 ? "inline-block" : "none";
+      $("problemActions").style.display = chatHistory.length > 0 ? "flex" : "none";
       renderSidebar();
     }
 
@@ -1439,18 +1440,13 @@
         $("singleView").style.display = "none";
         $("chatView").classList.add("visible");
         $("extraModeLabel").style.display = "none";
-        $("problemBtn").style.display = chatHistory.length > 0 ? "inline-block" : "none";
-        $("problemDifficulty").style.display = chatHistory.length > 0 ? "inline-block" : "none";
+        $("problemActions").style.display = chatHistory.length > 0 ? "flex" : "none";
         renderChatConversation();
       } else {
         $("singleView").style.display = "block";
         $("chatView").classList.remove("visible");
         $("extraModeLabel").style.display = "flex";
-        $("problemDifficulty").style.display = "inline-block";
-        // Show problem button if we have a previous answer
-        if (lastNotesAnswer) {
-          $("problemBtn").style.display = "inline-block";
-        }
+        $("problemActions").style.display = "none";
       }
     }
 
@@ -1657,9 +1653,6 @@
       // Hide problem section when asking new question
       $("problemSection").style.display = "none";
       $("problemSection").classList.remove("visible");
-      if (!isChatMode) {
-        $("problemBtn").style.display = "none";
-      }
       $("submitAnswerBtn").disabled = false;
       $("newProblemBtn").disabled = false;
 
@@ -1742,9 +1735,8 @@
           });
           finalizeStreamingBubble(streamCoverage);
           autoSaveCurrentConversation();
-          // Show Problem button after first turn
-          $("problemBtn").style.display = "inline-block";
-          $("problemDifficulty").style.display = "inline-block";
+          // Show Problem actions after first turn
+          $("problemActions").style.display = "flex";
         } else {
           $("notes").classList.remove("streaming-cursor");
           $("extra").classList.remove("streaming-cursor");
@@ -1753,10 +1745,8 @@
             $("extra").innerHTML = renderMarkdown(rawExtra);
           }
 
-          // Store answer and show problem button
+          // Store answer
           lastNotesAnswer = rawNotes;
-          $("problemBtn").style.display = "inline-block";
-          $("problemDifficulty").style.display = "inline-block";
         }
 
         await typesetMath();

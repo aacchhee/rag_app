@@ -932,6 +932,43 @@ code {
   display: block;
 }
 
+.problem-actions {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding-bottom: 8px;
+}
+
+.problem-action-btn {
+  height: 38px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #aec0af;
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: .2s;
+}
+
+.problem-action-btn:hover {
+  background: var(--green);
+  color: white;
+  border-color: var(--green);
+  transform: translateY(-1px);
+}
+
+.problem-action-btn:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .chat-scroll {
   max-height: none;
   overflow-y: visible;
