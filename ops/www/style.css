@@ -1492,3 +1492,37 @@ details > summary.box-title {
   border-color: var(--green);
   transform: translateY(-1px);
 }
+
+.problem-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.problem-adjust-btn {
+  height: 34px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 520;
+  cursor: pointer;
+  transition: .15s;
+}
+
+.problem-adjust-btn:hover {
+  background: #f1f4ef;
+  color: var(--text);
+  border-color: #c4cec4;
+}
+
+.problem-adjust-btn:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}

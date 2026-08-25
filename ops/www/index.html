@@ -182,8 +182,6 @@
               <button id="rightHintBtn" class="hint-btn" type="button">💡</button>
               <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
               <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
-              <button id="rightEasierBtn" class="new-problem-btn" type="button">Easier</button>
-              <button id="rightHarderBtn" class="new-problem-btn" type="button">Harder</button>
             </div>
           </div>
 
@@ -1190,7 +1188,11 @@
           if (preview) {
             html += '<div class="problem-card-preview">' + escapeHtml(preview) + '</div>';
           }
+          html += '<div class="problem-card-actions">';
           html += '<button class="problem-card-btn" data-problem-index="' + item.index + '">Open Problem</button>';
+          html += '<button class="problem-adjust-btn" data-adjust="easier" data-problem-index="' + item.index + '">Easier</button>';
+          html += '<button class="problem-adjust-btn" data-adjust="harder" data-problem-index="' + item.index + '">Harder</button>';
+          html += '</div>';
           html += '</div>';
           html += '</div>';
           html += '</div>';
@@ -1492,8 +1494,6 @@
       $("newProblemBtn").disabled = true;
       $("submitAnswerBtn").disabled = true;
       $("rightSubmitAnswerBtn").disabled = true;
-      $("rightEasierBtn").disabled = true;
-      $("rightHarderBtn").disabled = true;
       setStatus("Generating problem…");
 
       try {
@@ -1616,8 +1616,6 @@
       } finally {
         $("problemBtn").disabled = false;
         $("newProblemBtn").disabled = false;
-        $("rightEasierBtn").disabled = false;
-        $("rightHarderBtn").disabled = false;
       }
     }
 
@@ -1986,9 +1984,6 @@
         });
       })();
 
-      $("rightEasierBtn").addEventListener("click", function () { generateProblem("easier"); });
-      $("rightHarderBtn").addEventListener("click", function () { generateProblem("harder"); });
-
       $("rightShowAnswerBtn").addEventListener("click", toggleRightGeneratedAnswer);
 
       // Click on problem cards in chat to open them in right sidebar
@@ -2000,6 +1995,19 @@
         activeProblemIndex = idx;
         renderActiveProblem();
         openRightSidebar();
+      });
+
+      // Easier / harder from problem bubbles
+      document.addEventListener("click", function (e) {
+        var btn = e.target.closest(".problem-adjust-btn");
+        if (!btn) return;
+        var adj = btn.getAttribute("data-adjust");
+        var idx = parseInt(btn.getAttribute("data-problem-index"), 10);
+        if (!adj || isNaN(idx)) return;
+        e.stopPropagation();
+        activeProblemIndex = idx;
+        renderActiveProblem();
+        generateProblem(adj);
       });
 
       $("rightSubmitAnswerBtn").addEventListener("click", submitRightAnswer);
