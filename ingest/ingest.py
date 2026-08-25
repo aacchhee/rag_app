@@ -19,7 +19,11 @@ from ingest.pdf import convert_pdf_to_markdown
 from config import Config
 
 
-REPO_DIR = Path("/home/rag/notes_repo")
+# repo path -> course name
+REPOS: list[tuple[Path, str]] = [
+    (Path("/home/rag/notes_repo"), "IMAx2024"),
+    (Path("/home/rag/ingmat3a_ntnu"), "IMAx3011"),
+]
 
 # Course-scoped upload directory for PDFs uploaded via the ingest web UI.
 # Each subdirectory is a course name, e.g. /app/data/courses/ma1101/week1.pdf
@@ -34,43 +38,51 @@ def _course_for(f: Path) -> str | None:
         return parts[0] if len(parts) > 1 else None
     except ValueError:
         pass
-    try:
-        rel = f.relative_to(REPO_DIR)
-        return "IMAx2024"
-    except ValueError:
-        pass
+    for repo_dir, course_name in REPOS:
+        try:
+            rel = f.relative_to(repo_dir)
+            return course_name
+        except ValueError:
+            continue
     return None
 
 
 def _rel_source(f: Path) -> str:
-    for base, prefix in ((REPO_DIR, ""), (COURSES_DIR, "")):
+    for repo_dir, _ in REPOS:
         try:
-            return prefix + str(f.relative_to(base))
+            return str(f.relative_to(repo_dir))
         except ValueError:
             continue
+    try:
+        return str(f.relative_to(COURSES_DIR))
+    except ValueError:
+        pass
     return f.name
 
 
 def collect_files() -> list[Path]:
     files: list[Path] = []
 
-    # 1) root index.qmd
-    idx = REPO_DIR / "index.qmd"
-    if idx.exists():
-        files.append(idx)
+    for repo_dir, _ in REPOS:
+        if not repo_dir.exists():
+            continue
+        # 1) root index.qmd
+        idx = repo_dir / "index.qmd"
+        if idx.exists():
+            files.append(idx)
 
-    # 2) wrappers in /pages
-    pages_dir = REPO_DIR / "pages"
-    if pages_dir.exists():
-        files.extend(sorted(pages_dir.glob("*.qmd")))
+        # 2) wrappers in /pages
+        pages_dir = repo_dir / "pages"
+        if pages_dir.exists():
+            files.extend(sorted(pages_dir.glob("*.qmd")))
 
-    # 3) actual content in /_includes/**/*.md (recursive)
-    inc = REPO_DIR / "_includes"
-    if inc.exists():
-        files.extend(sorted(inc.rglob("*.md")))
+        # 3) actual content in /_includes/**/*.md (recursive)
+        inc = repo_dir / "_includes"
+        if inc.exists():
+            files.extend(sorted(inc.rglob("*.md")))
 
-    # 4) PDFs anywhere in the repo
-    files.extend(sorted(REPO_DIR.rglob("*.pdf")))
+        # 4) PDFs anywhere in the repo
+        files.extend(sorted(repo_dir.rglob("*.pdf")))
 
     # 5) Uploaded files via the ingest web UI (course-scoped): PDF, Markdown, QMD
     if COURSES_DIR.exists():
