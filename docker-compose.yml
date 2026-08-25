@@ -57,9 +57,10 @@ services:
       # Persists marker's downloaded model weights (multi-GB) across container
       # recreations instead of re-downloading them from Hugging Face each time.
       - ./data/marker_cache:/root/.cache/huggingface
-      # Writable dir for PDFs uploaded via the ingest web UI. Kept as its own
-      # mount (not nested under the read-only notes_repo mount above, which
-      # can't hold new mountpoints) — picked up separately by collect_files().
+      # Writable dir for files uploaded via the ingest web UI (PDF, MD, QMD).
+      # Kept as its own mount (not nested under the read-only notes_repo mount
+      # above, which can't hold new mountpoints) — picked up separately by
+      # collect_files().
       - ./data/pdf_uploads:/app/data/pdf_uploads
     depends_on:
       - qdrant

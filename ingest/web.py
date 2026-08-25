@@ -233,7 +233,9 @@ def delete_course(name):
         return jsonify({"error": "could not delete"}), 500
 
 
-# --- PDFs (course-scoped) ---
+# --- Uploaded files (course-scoped) ---
+
+SUPPORTED_EXTS = {"pdf", "md", "qmd"}
 
 def _course_upload_dir(course: str | None) -> Path:
     if course:
@@ -241,32 +243,38 @@ def _course_upload_dir(course: str | None) -> Path:
     return COURSES_DIR  # fallback
 
 
-@app.get("/pdfs")
-def list_pdfs():
+@app.get("/files")
+def list_files():
     _bump_activity()
     course = (request.args.get("course") or "").strip()
     d = _course_upload_dir(course) if course else COURSES_DIR
     if not d.exists():
         return jsonify([])
-    pdfs = sorted(p.name for p in d.rglob("*.pdf"))
-    return jsonify(pdfs)
+    names = sorted(
+        p.name
+        for p in d.rglob("*")
+        if p.is_file() and p.suffix.lower().lstrip(".") in SUPPORTED_EXTS
+    )
+    return jsonify(names)
 
 
-@app.post("/pdfs")
-def upload_pdf():
+@app.post("/files")
+def upload_file():
     _bump_activity()
     file = request.files.get("file")
     if file is None or not file.filename:
         return jsonify({"error": "no file provided"}), 400
 
     filename = secure_filename(file.filename)
-    if not filename.lower().endswith(".pdf"):
-        return jsonify({"error": "only .pdf files are allowed"}), 400
+    ext = Path(filename).suffix.lower().lstrip(".")
+    if ext not in SUPPORTED_EXTS:
+        return jsonify({"error": f"only {', '.join(sorted(SUPPORTED_EXTS))} files are allowed"}), 400
 
-    head = file.stream.read(5)
-    file.stream.seek(0)
-    if head != b"%PDF-":
-        return jsonify({"error": "file does not look like a PDF"}), 400
+    if ext == "pdf":
+        head = file.stream.read(5)
+        file.stream.seek(0)
+        if head != b"%PDF-":
+            return jsonify({"error": "file does not look like a PDF"}), 400
 
     course = (request.form.get("course") or "").strip()
     target_dir = _course_upload_dir(course) if course else COURSES_DIR / "uncategorized"
@@ -275,14 +283,17 @@ def upload_pdf():
     return jsonify({"saved": filename, "course": course or "uncategorized"})
 
 
-@app.delete("/pdfs/<path:filename>")
-def delete_pdf(filename):
+@app.delete("/files/<path:filename>")
+def delete_file(filename):
     _bump_activity()
     safe_name = secure_filename(filename)
+    ext = Path(safe_name).suffix.lower().lstrip(".")
+    if ext not in SUPPORTED_EXTS:
+        return jsonify({"error": "unsupported file type"}), 400
     course = (request.args.get("course") or "").strip()
     target_dir = _course_upload_dir(course) if course else COURSES_DIR / "uncategorized"
     target = target_dir / safe_name
-    if safe_name and target.is_file() and target.suffix.lower() == ".pdf":
+    if safe_name and target.is_file() and target.suffix.lower().lstrip(".") in SUPPORTED_EXTS:
         target.unlink()
         return jsonify({"deleted": safe_name})
     return jsonify({"error": "not found"}), 404
@@ -305,10 +316,10 @@ _PAGE = """<!doctype html>
   .error { color: #c0392b; }
   pre { background: #111; color: #ddd; padding: 1rem; height: 420px; overflow-y: auto;
         white-space: pre-wrap; word-break: break-word; border-radius: 6px; }
-  ul#pdf-list { list-style: none; padding: 0; }
-  ul#pdf-list li { display: flex; align-items: center; justify-content: space-between;
+  ul#file-list { list-style: none; padding: 0; }
+  ul#file-list li { display: flex; align-items: center; justify-content: space-between;
                     padding: 0.4rem 0.6rem; border-bottom: 1px solid #ddd; }
-  ul#pdf-list li button { font-size: 0.85rem; padding: 0.2rem 0.6rem; }
+  ul#file-list li button { font-size: 0.85rem; padding: 0.2rem 0.6rem; }
   #upload-msg { margin-top: 0.5rem; font-size: 0.9rem; }
   .course-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
   .course-row input { font-size: 1rem; padding: 0.35rem 0.5rem; flex: 1; }
@@ -323,24 +334,24 @@ _PAGE = """<!doctype html>
   <h1>Ingest</h1>
 
   <h2>Courses</h2>
-  <p>Create a course folder. Uploaded PDFs go into the selected course.</p>
+  <p>Create a course folder. Uploaded files go into the selected course.</p>
   <div class="course-row">
     <input type="text" id="new-course" placeholder="e.g. ma1101">
     <button onclick="createCourse()">Create</button>
   </div>
   <ul id="course-list"></ul>
 
-  <h2>Upload PDF</h2>
-  <p>Select a course, then upload a PDF. It will be ingested into that course.</p>
+  <h2>Upload File</h2>
+  <p>Select a course, then upload a PDF, Markdown, or QMD file. It will be ingested into that course.</p>
   <select id="course-select"><option value="">-- select course --</option></select><br><br>
-  <input type="file" id="pdf-file" accept="application/pdf">
-  <button onclick="uploadPdf()">Upload</button>
+  <input type="file" id="file-input" accept=".pdf,.md,.qmd,application/pdf,text/markdown">
+  <button onclick="uploadFile()">Upload</button>
   <div id="upload-msg"></div>
-  <ul id="pdf-list"></ul>
+  <ul id="file-list"></ul>
 
   <h2>Run</h2>
   <p>Incremental by default: only new/changed files are re-chunked and re-embedded, unchanged
-  files (and unchanged PDFs) are skipped, removed files are cleaned up from Qdrant.</p>
+  files (and unchanged uploaded files) are skipped, removed files are cleaned up from Qdrant.</p>
   <label><input type="checkbox" id="force-full"> Force full rebuild (deletes and re-creates the whole collection, re-processes everything)</label><br><br>
   <button id="run-btn" onclick="runIngest()">Start ingest</button>
   <div id="status" class="idle">idle</div>
@@ -364,8 +375,8 @@ _PAGE = """<!doctype html>
 const btn = document.getElementById('run-btn');
 const statusEl = document.getElementById('status');
 const logEl = document.getElementById('log');
-const pdfFileEl = document.getElementById('pdf-file');
-const pdfListEl = document.getElementById('pdf-list');
+const fileInputEl = document.getElementById('file-input');
+const fileListEl = document.getElementById('file-list');
 const uploadMsgEl = document.getElementById('upload-msg');
 const forceFullEl = document.getElementById('force-full');
 const courseSelect = document.getElementById('course-select');
@@ -423,59 +434,59 @@ async function deleteCourse(name) {
   loadCourses();
 }
 
-async function loadPdfs() {
+async function loadFiles() {
   const course = courseSelect.value;
   const qs = course ? '?course=' + encodeURIComponent(course) : '';
-  const res = await fetch('/pdfs' + qs);
+  const res = await fetch('/files' + qs);
   const names = await res.json();
-  pdfListEl.innerHTML = '';
+  fileListEl.innerHTML = '';
   for (const name of names) {
     const li = document.createElement('li');
     const label = document.createElement('span');
     label.textContent = name;
     const delBtn = document.createElement('button');
     delBtn.textContent = 'Delete';
-    delBtn.onclick = () => deletePdf(name);
+    delBtn.onclick = () => deleteFile(name);
     li.appendChild(label);
     li.appendChild(delBtn);
-    pdfListEl.appendChild(li);
+    fileListEl.appendChild(li);
   }
 }
 
-async function uploadPdf() {
-  const file = pdfFileEl.files[0];
+async function uploadFile() {
+  const file = fileInputEl.files[0];
   const course = courseSelect.value;
   if (!course) {
     uploadMsgEl.textContent = 'Please select a course first.';
     return;
   }
   if (!file) {
-    uploadMsgEl.textContent = 'Please select a PDF file first.';
+    uploadMsgEl.textContent = 'Please select a file first.';
     return;
   }
   const formData = new FormData();
   formData.append('file', file);
   formData.append('course', course);
-  const res = await fetch('/pdfs', { method: 'POST', body: formData });
+  const res = await fetch('/files', { method: 'POST', body: formData });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     uploadMsgEl.textContent = 'Error: ' + (body.error || res.statusText);
     return;
   }
   uploadMsgEl.textContent = body.saved + ' uploaded to ' + body.course + '.';
-  pdfFileEl.value = '';
-  loadPdfs();
+  fileInputEl.value = '';
+  loadFiles();
 }
 
-async function deletePdf(name) {
+async function deleteFile(name) {
   const course = courseSelect.value;
   const qs = course ? '?course=' + encodeURIComponent(course) : '';
-  await fetch('/pdfs/' + encodeURIComponent(name) + qs, { method: 'DELETE' });
-  loadPdfs();
+  await fetch('/files/' + encodeURIComponent(name) + qs, { method: 'DELETE' });
+  loadFiles();
 }
 
 loadCourses();
-loadPdfs();
+loadFiles();
 
 async function loadSources() {
   const tbody = document.querySelector('#sources-table tbody');

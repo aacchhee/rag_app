@@ -72,9 +72,11 @@ def collect_files() -> list[Path]:
     # 4) PDFs anywhere in the repo
     files.extend(sorted(REPO_DIR.rglob("*.pdf")))
 
-    # 5) PDFs uploaded via the ingest web UI (course-scoped)
+    # 5) Uploaded files via the ingest web UI (course-scoped): PDF, Markdown, QMD
     if COURSES_DIR.exists():
         files.extend(sorted(COURSES_DIR.rglob("*.pdf")))
+        files.extend(sorted(COURSES_DIR.rglob("*.md")))
+        files.extend(sorted(COURSES_DIR.rglob("*.qmd")))
 
     return files
 
