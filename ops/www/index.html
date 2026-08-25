@@ -415,6 +415,23 @@
 
     var MAX_TURNS = 20;
 
+    // --- User preferences (localStorage) ---
+    var USER_PREFS_KEY = "rag_user_prefs";
+
+    function getUserPrefs() {
+      try {
+        return JSON.parse(localStorage.getItem(USER_PREFS_KEY) || "{}");
+      } catch (e) { return {}; }
+    }
+
+    function setUserPref(key, value) {
+      try {
+        var prefs = getUserPrefs();
+        prefs[key] = value;
+        localStorage.setItem(USER_PREFS_KEY, JSON.stringify(prefs));
+      } catch (e) { }
+    }
+
     // --- Conversation persistence (localStorage) ---
     var CONV_STORAGE_KEY = "rag_conversations";
     var currentConvId = null; // null = unsaved / new
@@ -1316,7 +1333,13 @@
         return;
       }
 
+      var prefs = getUserPrefs();
+      var savedModel = String(prefs.chat_model || "").trim();
+
       var targetValue = previousValue;
+      if (savedModel && chatModelSelectHasValue(select, savedModel)) {
+        targetValue = savedModel;
+      }
       if (!targetValue || !chatModelSelectHasValue(select, targetValue)) {
         targetValue = String(defaultModel || "");
       }
@@ -1356,6 +1379,21 @@
           opt.value = names[i];
           opt.textContent = names[i];
           select.appendChild(opt);
+        }
+        var prefs = getUserPrefs();
+        var savedCourse = String(prefs.course || "").trim();
+        if (savedCourse) {
+          var found = false;
+          for (var j = 0; j < select.options.length; j++) {
+            if (select.options[j].value === savedCourse) {
+              found = true;
+              break;
+            }
+          }
+          if (found) {
+            select.value = savedCourse;
+            logDebug("Restored saved course", { course: savedCourse });
+          }
         }
       } catch (e) {
         logDebug("Courses load failed", { error: String(e) });
@@ -1869,7 +1907,13 @@
 
       $("chatModel").addEventListener("change", function () {
         syncChatModelTitle();
+        setUserPref("chat_model", getSelectedChatModel());
         logDebug("Chat model changed", { chatModel: getSelectedChatModel() || "(default)" });
+      });
+
+      $("courseSelect").addEventListener("change", function () {
+        setUserPref("course", getSelectedCourse());
+        logDebug("Course changed", { course: getSelectedCourse() || "all" });
       });
 
       switchMode(true); // always chat mode
