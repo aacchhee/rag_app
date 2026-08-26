@@ -172,7 +172,13 @@
           Click "Exercise" to generate a practice exercise from this conversation.
         </div>
         <div id="rightExerciseArea" style="display:none;">
-          <div id="rightExerciseContent" class="exercise-box"></div>
+          <div id="rightExerciseWrapper" class="exercise-truncated">
+            <div id="rightExerciseContent" class="exercise-box"></div>
+            <div class="exercise-gradient-mask"></div>
+          </div>
+          <div id="rightExerciseToggleBox" class="exercise-toggle-box">
+            <button id="rightExerciseExpandBtn" class="exercise-expand-btn" type="button">Show more</button>
+          </div>
 
           <div id="rightAnswerInputArea" class="answer-input-area visible">
             <label for="rightStudentAnswer">Your answer:</label>
@@ -820,6 +826,11 @@
       $("rightSidebarTitle").textContent = "Exercise " + (activeExerciseIndex + 1);
       $("rightExerciseContent").innerHTML = renderMarkdown(currentExerciseRaw);
       $("rightExerciseContent").classList.remove("streaming-cursor");
+
+      // Reset truncation wrapper
+      var truncWrap = $("rightExerciseWrapper");
+      truncWrap.classList.remove("expanded");
+      truncWrap.classList.remove("overflowing");
       $("rightAnswerInputArea").classList.add("visible");
       $("rightStudentAnswer").value = prob.student_answer || "";
 
@@ -855,6 +866,20 @@
 
       typesetMath();
       renderChatConversation();
+      setTimeout(checkExerciseOverflow, 100);
+    }
+
+    function checkExerciseOverflow() {
+      var wrap = $("rightExerciseWrapper");
+      var btn = $("rightExerciseExpandBtn");
+      if (!wrap || !btn) return;
+      var enabled = wrap.scrollHeight > wrap.clientHeight + 2;
+      if (enabled) {
+        wrap.classList.add("overflowing");
+      } else {
+        wrap.classList.remove("overflowing");
+        wrap.classList.add("expanded");
+      }
     }
 
     function updateActiveExerciseState() {
@@ -2024,6 +2049,13 @@
       })();
 
       $("rightShowAnswerBtn").addEventListener("click", toggleRightGeneratedAnswer);
+
+      // Toggle expand/collapse on right sidebar
+      $("rightExerciseExpandBtn").addEventListener("click", function () {
+        var wrap = $("rightExerciseWrapper");
+        wrap.classList.toggle("expanded");
+        this.textContent = wrap.classList.contains("expanded") ? "Show less" : "Show more";
+      });
 
       // Click on exercise cards in chat to open them in right sidebar
       document.addEventListener("click", function (e) {
