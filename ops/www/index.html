@@ -1223,9 +1223,14 @@
           // Full rendered exercise
           html += '<div class="exercise-full">' + renderMarkdown(prob.problem) + '</div>';
           html += '<div class="exercise-card-actions">';
-          html += '<button class="exercise-card-btn" data-exercise-index="' + item.index + '">Open Exercise</button>';
+          html += '<div class="exercise-adjust-row">';
+          html += '<span class="exercise-adjust-title">Adjust exercise</span>';
+          html += '<div class="exercise-adjust-group">';
           html += '<button class="exercise-adjust-btn" data-adjust="easier" data-exercise-index="' + item.index + '">Easier</button>';
           html += '<button class="exercise-adjust-btn" data-adjust="harder" data-exercise-index="' + item.index + '">Harder</button>';
+          html += '</div>';
+          html += '</div>';
+          html += '<button class="exercise-card-btn" data-exercise-index="' + item.index + '">Open Exercise</button>';
           html += '</div>';
           html += '</div>';
           html += '</div>';
