@@ -426,7 +426,7 @@ select {
   min-width: 320px;
 }
 
-/* Right sidebar (practice problem panel) */
+/* Right sidebar (practice exercise panel) */
 .right-sidebar {
   box-sizing: border-box;
   background: var(--sidebar);
@@ -932,7 +932,7 @@ code {
   display: block;
 }
 
-.problem-actions {
+.exercise-actions {
   display: none;
   align-items: center;
   gap: 10px;
@@ -940,7 +940,7 @@ code {
   padding-bottom: 8px;
 }
 
-.problem-action-btn {
+.exercise-action-btn {
   height: 38px;
   padding: 0 16px;
   display: inline-flex;
@@ -956,13 +956,13 @@ code {
   transition: .15s;
 }
 
-.problem-action-btn:hover {
+.exercise-action-btn:hover {
   background: #f1f4ef;
   color: var(--text);
   border-color: #c4cec4;
 }
 
-.problem-action-btn:disabled {
+.exercise-action-btn:disabled {
   opacity: .55;
   cursor: not-allowed;
 }
@@ -1169,17 +1169,17 @@ code {
   vertical-align: super;
 }
 
-/* Problem section */
-.problem-btn {
+/* Exercise section */
+.exercise-btn {
   display: none;
 }
 
-.problem-section {
+.exercise-section {
   margin-top: 14px;
   display: none;
 }
 
-.problem-section.visible {
+.exercise-section.visible {
   display: block;
 }
 
@@ -1195,7 +1195,7 @@ details > summary.box-title {
   margin-bottom: 0;
 }
 
-.problem-box {
+.exercise-box {
   border: 1px solid var(--task-line);
   border-radius: 17px;
   padding: 20px 24px 0;
@@ -1205,28 +1205,28 @@ details > summary.box-title {
   margin-top: 12px;
 }
 
-.problem-box p {
+.exercise-box p {
   margin: 0 0 10px;
   line-height: 1.65;
   color: #41483e;
 }
 
-.problem-box p:last-child {
+.exercise-box p:last-child {
   margin-bottom: 0;
 }
 
-.problem-box ul,
-.problem-box ol {
+.exercise-box ul,
+.exercise-box ol {
   margin: 4px 0 10px;
   padding-left: 22px;
 }
 
-.problem-box li {
+.exercise-box li {
   margin-bottom: 4px;
   line-height: 1.5;
 }
 
-.problem-box strong {
+.exercise-box strong {
   font-weight: 650;
 }
 
@@ -1250,7 +1250,7 @@ details > summary.box-title {
 
 .submit-answer-btn,
 .show-answer-btn,
-.new-problem-btn,
+.new-exercise-btn,
 .hint-btn,
 .generate-task-button {
   height: 40px;
@@ -1271,7 +1271,7 @@ details > summary.box-title {
 
 .submit-answer-btn:hover,
 .show-answer-btn:hover,
-.new-problem-btn:hover,
+.new-exercise-btn:hover,
 .hint-btn:hover,
 .generate-task-button:hover {
   background: var(--green);
@@ -1282,7 +1282,7 @@ details > summary.box-title {
 
 .submit-answer-btn:disabled,
 .show-answer-btn:disabled,
-.new-problem-btn:disabled,
+.new-exercise-btn:disabled,
 .hint-btn:disabled,
 .generate-task-button:disabled,
 .generate-task-button.loading {
@@ -1463,13 +1463,13 @@ details > summary.box-title {
   font-size: 10px;
 }
 
-/* Problem bubble rendered inside chat stream */
-.chat-bubble.assistant.problem-bubble .chat-bubble-content {
+/* Exercise bubble rendered inside chat stream */
+.chat-bubble.assistant.exercise-bubble .chat-bubble-content {
   background: #FBFAF4;
   border: 1px solid #e5e1cd;
 }
 
-.problem-bubble .problem-full {
+.exercise-bubble .exercise-full {
   color: #41483e;
   background: #F3F1E6;
   border: 1px solid #ddd8c0;
@@ -1480,15 +1480,15 @@ details > summary.box-title {
   margin-bottom: 12px;
 }
 
-.problem-bubble .problem-full p {
+.exercise-bubble .exercise-full p {
   margin: 0 0 8px;
 }
 
-.problem-bubble .problem-full p:last-child {
+.exercise-bubble .exercise-full p:last-child {
   margin-bottom: 0;
 }
 
-.problem-bubble .problem-card-btn {
+.exercise-bubble .exercise-card-btn {
   height: 38px;
   padding: 0 16px;
   display: inline-flex;
@@ -1504,21 +1504,21 @@ details > summary.box-title {
   transition: .2s;
 }
 
-.problem-bubble .problem-card-btn:hover {
+.exercise-bubble .exercise-card-btn:hover {
   background: var(--green);
   color: white;
   border-color: var(--green);
   transform: translateY(-1px);
 }
 
-.problem-card-actions {
+.exercise-card-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.problem-adjust-btn {
+.exercise-adjust-btn {
   height: 34px;
   padding: 0 12px;
   display: inline-flex;
@@ -1534,13 +1534,13 @@ details > summary.box-title {
   transition: .15s;
 }
 
-.problem-adjust-btn:hover {
+.exercise-adjust-btn:hover {
   background: #f1f4ef;
   color: var(--text);
   border-color: #c4cec4;
 }
 
-.problem-adjust-btn:disabled {
+.exercise-adjust-btn:disabled {
   opacity: .55;
   cursor: not-allowed;
 }

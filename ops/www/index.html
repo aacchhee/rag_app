@@ -74,10 +74,10 @@
               <div id="extra" class="answer" style="margin-top:10px;"></div>
             </details>
 
-            <!-- Problem section (single-mode, appears after answer) -->
-            <div id="problemSection" class="problem-section" style="display:none;">
-              <h2 class="box-title">Practice Problem</h2>
-              <div id="problemContent" class="problem-box"></div>
+            <!-- Exercise section (single-mode, appears after answer) -->
+            <div id="exerciseSection" class="exercise-section" style="display:none;">
+              <h2 class="box-title">Practice Exercise</h2>
+              <div id="exerciseContent" class="exercise-box"></div>
 
               <div id="answerInputArea" class="answer-input-area">
                 <label for="studentAnswer">Your answer:</label>
@@ -87,7 +87,7 @@
                   <button id="hintBtn" class="hint-btn" type="button">💡</button>
                   <button id="submitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
                   <button id="showAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
-                  <button id="newProblemBtn" class="new-problem-btn" type="button">New problem</button>
+                  <button id="newExerciseBtn" class="new-exercise-btn" type="button">New exercise</button>
                 </div>
               </div>
 
@@ -105,9 +105,9 @@
             <div class="chat-scroll" id="chatScroll"></div>
           </div>
 
-          <div class="problem-actions" id="problemActions" style="display:none;">
-            <button id="problemBtn" class="problem-action-btn" type="button">+ Generate Problem</button>
-            <select id="problemDifficulty">
+          <div class="exercise-actions" id="exerciseActions" style="display:none;">
+            <button id="exerciseBtn" class="exercise-action-btn" type="button">+ Generate Exercise</button>
+            <select id="exerciseDifficulty">
               <option value="easy">Easy</option>
               <option value="medium" selected>Medium</option>
               <option value="hard">Hard</option>
@@ -160,19 +160,19 @@
       <div id="err" class="err"></div>
     </div>
 
-    <!-- Right sidebar: practice problem (chat mode) -->
+    <!-- Right sidebar: practice exercise (chat mode) -->
     <div class="right-sidebar collapsed" id="rightSidebar">
       <div class="resize-grip" id="rightSidebarGrip"></div>
       <div class="right-sidebar-header">
-        <h2 class="right-sidebar-title" id="rightSidebarTitle">Practice Problems</h2>
+        <h2 class="right-sidebar-title" id="rightSidebarTitle">Practice Exercises</h2>
       </div>
       <!-- Scrollable content -->
       <div class="right-sidebar-content" id="rightSidebarContent">
         <div class="right-sidebar-welcome" id="rightSidebarWelcome">
-          Click "Problem" to generate a practice problem from this conversation.
+          Click "Exercise" to generate a practice exercise from this conversation.
         </div>
-        <div id="rightProblemArea" style="display:none;">
-          <div id="rightProblemContent" class="problem-box"></div>
+        <div id="rightExerciseArea" style="display:none;">
+          <div id="rightExerciseContent" class="exercise-box"></div>
 
           <div id="rightAnswerInputArea" class="answer-input-area visible">
             <label for="rightStudentAnswer">Your answer:</label>
@@ -405,13 +405,14 @@
     var rawExtra = "";
     var mathRenderTimer = null;
     var lastSingleQuestion = ""; // last single-mode question shown above the answer
-    var lastNotesAnswer = "";    // last notes answer (for problem context)
-    var currentProblemRaw = "";  // raw problem text from LLM (active problem)
-    var currentGeneratedAnswerRaw = ""; // hidden answer key for assessment (active problem)
+    var lastNotesAnswer = "";    // last notes answer (for exercise context)
+    var currentExerciseRaw = "";  // raw exercise text from LLM (active exercise)
+    var currentGeneratedAnswerRaw = ""; // hidden answer key for assessment (active exercise)
 
-    // Problems array for chat mode: [{problem, generated_answer, student_answer, assessment}, ...]
-    var problems = [];
-    var activeProblemIndex = -1;
+    // Exercises array for chat mode: [{problem, generated_answer, student_answer, assessment}, ...]
+    // Note: internal object keys keep "problem" for backward compat with stored conversations
+    var exercises = [];
+    var activeExerciseIndex = -1;
 
     var MAX_TURNS = 20;
 
@@ -446,9 +447,9 @@
       } catch (e) { return []; }
     }
 
-    function saveConversation(id, title, history, _problems) {
+    function saveConversation(id, title, history, _exercises) {
       try {
-        var entry = { id: id, title: title, updated: Date.now(), history: history, problems: _problems || [] };
+        var entry = { id: id, title: title, updated: Date.now(), history: history, exercises: _exercises || [] };
         localStorage.setItem(_convKey(id), JSON.stringify(entry));
         var ids = listConversationIds();
         if (ids.indexOf(id) === -1) {
@@ -677,21 +678,21 @@
       chatHistory = [];
       rawNotes = "";
       rawExtra = "";
-      currentProblemRaw = "";
+      currentExerciseRaw = "";
       currentGeneratedAnswerRaw = "";
-      problems = [];
-      activeProblemIndex = -1;
+      exercises = [];
+      activeExerciseIndex = -1;
       currentConvId = null;
       renderChatConversation();
       renderSidebar();
-      resetRightSidebarProblemUI();
+      resetRightSidebarExerciseUI();
       resetRightSidebarAssessmentUI();
       $("rightSidebarWelcome").style.display = "flex";
-      $("rightProblemArea").style.display = "none";
-      $("rightSidebarTitle").textContent = "Practice Problems";
+      $("rightExerciseArea").style.display = "none";
+      $("rightSidebarTitle").textContent = "Practice Exercises";
       $("rightStudentAnswer").value = "";
       $("welcome").style.display = "flex";
-      $("problemActions").style.display = "none";
+      $("exerciseActions").style.display = "none";
     }
 
     function switchToConversation(id) {
@@ -700,22 +701,22 @@
       chatHistory = conv.history;
       rawNotes = "";
       rawExtra = "";
-      problems = Array.isArray(conv.problems) ? conv.problems : [];
-      activeProblemIndex = -1;
-      currentProblemRaw = "";
+      exercises = Array.isArray(conv.exercises) ? conv.exercises : (Array.isArray(conv.problems) ? conv.problems : []);
+      activeExerciseIndex = -1;
+      currentExerciseRaw = "";
       currentGeneratedAnswerRaw = "";
       currentConvId = id;
       $("welcome").style.display = "none";
       resetRightSidebarAssessmentUI();
-      if (problems.length > 0) {
-        activeProblemIndex = problems.length - 1;
-        renderActiveProblem();
+      if (exercises.length > 0) {
+        activeExerciseIndex = exercises.length - 1;
+        renderActiveExercise();
       } else {
         $("rightSidebarWelcome").style.display = "flex";
-        $("rightProblemArea").style.display = "none";
+        $("rightExerciseArea").style.display = "none";
       }
       renderChatConversation();
-      $("problemActions").style.display = chatHistory.length > 0 ? "flex" : "none";
+      $("exerciseActions").style.display = chatHistory.length > 0 ? "flex" : "none";
       renderSidebar();
     }
 
@@ -725,7 +726,7 @@
         currentConvId = "conv_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
       }
       var title = conversationTitleFromHistory(chatHistory);
-      saveConversation(currentConvId, title, chatHistory, problems);
+      saveConversation(currentConvId, title, chatHistory, exercises);
       renderSidebar();
     }
 
@@ -754,7 +755,7 @@
       return lines.join("\n");
     }
 
-    function resetRightSidebarProblemUI() {
+    function resetRightSidebarExerciseUI() {
       $("rightGeneratedAnswerTitle").style.display = "none";
       $("rightGeneratedAnswerBox").classList.remove("visible");
       $("rightGeneratedAnswerBox").innerHTML = "";
@@ -808,17 +809,17 @@
       toggle.style.right = "auto";
     }
 
-    function renderActiveProblem() {
-      if (activeProblemIndex < 0 || activeProblemIndex >= problems.length) return;
-      var prob = problems[activeProblemIndex];
-      currentProblemRaw = prob.problem;
+    function renderActiveExercise() {
+      if (activeExerciseIndex < 0 || activeExerciseIndex >= exercises.length) return;
+      var prob = exercises[activeExerciseIndex];
+      currentExerciseRaw = prob.problem;
       currentGeneratedAnswerRaw = prob.generated_answer || "";
 
       $("rightSidebarWelcome").style.display = "none";
-      $("rightProblemArea").style.display = "block";
-      $("rightSidebarTitle").textContent = "Problem " + (activeProblemIndex + 1);
-      $("rightProblemContent").innerHTML = renderMarkdown(currentProblemRaw);
-      $("rightProblemContent").classList.remove("streaming-cursor");
+      $("rightExerciseArea").style.display = "block";
+      $("rightSidebarTitle").textContent = "Exercise " + (activeExerciseIndex + 1);
+      $("rightExerciseContent").innerHTML = renderMarkdown(currentExerciseRaw);
+      $("rightExerciseContent").classList.remove("streaming-cursor");
       $("rightAnswerInputArea").classList.add("visible");
       $("rightStudentAnswer").value = prob.student_answer || "";
 
@@ -856,35 +857,35 @@
       renderChatConversation();
     }
 
-    function updateActiveProblemState() {
-      if (activeProblemIndex < 0 || activeProblemIndex >= problems.length) return;
-      var prob = problems[activeProblemIndex];
-      prob.problem = currentProblemRaw;
+    function updateActiveExerciseState() {
+      if (activeExerciseIndex < 0 || activeExerciseIndex >= exercises.length) return;
+      var prob = exercises[activeExerciseIndex];
+      prob.problem = currentExerciseRaw;
       prob.generated_answer = currentGeneratedAnswerRaw;
       prob.student_answer = $("rightStudentAnswer").value;
-      if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, problems);
+      if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
     }
 
-    function addProblem(problemText, generatedAnswer) {
+    function addExercise(exerciseText, generatedAnswer) {
       var prob = {
-        problem: problemText,
+        problem: exerciseText,
         generated_answer: generatedAnswer || "",
         student_answer: "",
         assessment: "",
         generated_answer_shown: false,
         createdAt: Date.now()
       };
-      problems.push(prob);
-      activeProblemIndex = problems.length - 1;
-      renderActiveProblem();
-      if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, problems);
+      exercises.push(prob);
+      activeExerciseIndex = exercises.length - 1;
+      renderActiveExercise();
+      if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
     }
 
     // --- Hint ---
     async function requestHint(isRight) {
-      var problemText = currentProblemRaw || "";
-      if (!problemText) return;
-      var payload = applySelectedChatModel({ problem: problemText });
+      var exerciseText = currentExerciseRaw || "";
+      if (!exerciseText) return;
+      var payload = applySelectedChatModel({ problem: exerciseText });
       var btnId = isRight ? "rightHintBtn" : "hintBtn";
       var boxId = isRight ? "rightHintBox" : "hintBox";
       var titleId = isRight ? "rightHintTitle" : "hintTitle";
@@ -937,13 +938,13 @@
       }
     }
 
-    // --- Shared problem / answer / assessment cores ---
+    // --- Shared exercise / answer / assessment cores ---
 
     async function _calculateAnswerCore(payload, submitBtnId, showBtnId, label) {
       currentGeneratedAnswerRaw = "";
       try {
         logDebug("Calculate answer request start" + (label ? " (" + label + ")" : ""), {
-          problemLen: (currentProblemRaw || "").length,
+          exerciseLen: (currentExerciseRaw || "").length,
           chatModel: getSelectedChatModel() || "(default)"
         });
         var response = await fetch("/rag2/calculate-answer", {
@@ -976,7 +977,7 @@
 
         $(submitBtnId).disabled = false;
         $(showBtnId).disabled = false;
-        setStatus("Problem ready - try solving it!");
+        setStatus("Exercise ready - try solving it!");
       } catch (e) {
         logDebug("Calculate answer request failed", { label: label, error: String(e) });
         throw e;
@@ -1010,7 +1011,7 @@
       var assessRaw = "";
       try {
         logDebug("Assess request start" + (label ? " (" + label + ")" : ""), {
-          problemLen: (currentProblemRaw || "").length,
+          exerciseLen: (currentExerciseRaw || "").length,
           generatedLen: (currentGeneratedAnswerRaw || "").length,
           answerLen: studentAnswer.length,
           chatModel: getSelectedChatModel() || "(default)"
@@ -1019,7 +1020,7 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(applySelectedCourse(applySelectedChatModel({
-            problem: currentProblemRaw,
+            problem: currentExerciseRaw,
             generated_answer: currentGeneratedAnswerRaw,
             student_answer: studentAnswer
           })))
@@ -1099,15 +1100,15 @@
     }
 
     // --- Right sidebar wrappers ---
-    async function calculateRightProblemAnswer() {
+    async function calculateRightExerciseAnswer() {
       await _calculateAnswerCore(
-        { problem: currentProblemRaw, conversation_context: buildConversationContext() },
+        { problem: currentExerciseRaw, conversation_context: buildConversationContext() },
         "rightSubmitAnswerBtn", "rightShowAnswerBtn", "right sidebar"
       );
-      // Save generated answer to active problem
-      if (activeProblemIndex >= 0 && activeProblemIndex < problems.length) {
-        problems[activeProblemIndex].generated_answer = currentGeneratedAnswerRaw;
-        updateActiveProblemState();
+      // Save generated answer to active exercise
+      if (activeExerciseIndex >= 0 && activeExerciseIndex < exercises.length) {
+        exercises[activeExerciseIndex].generated_answer = currentGeneratedAnswerRaw;
+        updateActiveExerciseState();
       }
     }
 
@@ -1117,19 +1118,19 @@
       if (!studentAnswer) { setError("Please enter your answer."); return; }
       if (!currentGeneratedAnswerRaw.trim()) { setError("The generated answer is not ready yet. Please wait a moment."); return; }
       var assessRaw = await _submitAssessCore(studentAnswer, "rightAssessmentTitle", "rightAssessmentBox", "rightSubmitAnswerBtn", "right sidebar");
-      // Save assessment to active problem
-      if (assessRaw && activeProblemIndex >= 0 && activeProblemIndex < problems.length) {
-        problems[activeProblemIndex].assessment = assessRaw;
-        updateActiveProblemState();
+      // Save assessment to active exercise
+      if (assessRaw && activeExerciseIndex >= 0 && activeExerciseIndex < exercises.length) {
+        exercises[activeExerciseIndex].assessment = assessRaw;
+        updateActiveExerciseState();
       }
     }
 
     function toggleRightGeneratedAnswer() {
       _toggleGeneratedAnswer("rightGeneratedAnswerBox", "rightGeneratedAnswerTitle", "rightShowAnswerBtn");
-      if (activeProblemIndex >= 0 && activeProblemIndex < problems.length) {
+      if (activeExerciseIndex >= 0 && activeExerciseIndex < exercises.length) {
         var box = $("rightGeneratedAnswerBox");
-        problems[activeProblemIndex].generated_answer_shown = box.classList.contains("visible");
-        updateActiveProblemState();
+        exercises[activeExerciseIndex].generated_answer_shown = box.classList.contains("visible");
+        updateActiveExerciseState();
       }
     }
 
@@ -1140,7 +1141,7 @@
     // Chat rendering
     function renderChatConversation() {
       var scroll = $("chatScroll");
-      if (chatHistory.length === 0 && problems.length === 0) {
+      if (chatHistory.length === 0 && exercises.length === 0) {
         scroll.innerHTML = '<div style="padding:30px;text-align:center;color:#aaa;">Start a conversation by asking a question.</div>';
         return;
       }
@@ -1153,10 +1154,10 @@
         timeline.push({ type: 'user',   data: turn.question, createdAt: ts, sortOrder: 0, index: i });
         timeline.push({ type: 'assistant', data: turn, createdAt: ts, sortOrder: 1, index: i });
       }
-      for (var p = 0; p < problems.length; p++) {
-        var prob = problems[p];
+      for (var p = 0; p < exercises.length; p++) {
+        var prob = exercises[p];
         var pts = prob.createdAt || (1000000 + p * 10);
-        timeline.push({ type: 'problem', data: prob, createdAt: pts, sortOrder: 2, index: p });
+        timeline.push({ type: 'exercise', data: prob, createdAt: pts, sortOrder: 2, index: p });
       }
       timeline.sort(function(a, b) {
         if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
@@ -1185,21 +1186,21 @@
           html += '</div>';
           html += '</div>';
           html += '</div>';
-        } else if (item.type === 'problem') {
+        } else if (item.type === 'exercise') {
           var prob = item.data;
-          var isActive = item.index === activeProblemIndex;
-          html += '<div class="chat-bubble assistant problem-bubble' + (isActive ? ' active' : '') + '" data-problem-index="' + item.index + '">';
+          var isActive = item.index === activeExerciseIndex;
+          html += '<div class="chat-bubble assistant exercise-bubble' + (isActive ? ' active' : '') + '" data-exercise-index="' + item.index + '">';
           html += '<div class="assistant-row">';
           html += '<div class="assistant-avatar" aria-hidden="true">RAG</div>';
           html += '<div class="assistant-body">';
-          html += '<div class="assistant-label">Assistant <span>&middot;</span> <small>generated problem</small></div>';
+          html += '<div class="assistant-label">Assistant <span>&middot;</span> <small>generated exercise</small></div>';
           html += '<div class="chat-bubble-content">';
-          // Full rendered problem
-          html += '<div class="problem-full">' + renderMarkdown(prob.problem) + '</div>';
-          html += '<div class="problem-card-actions">';
-          html += '<button class="problem-card-btn" data-problem-index="' + item.index + '">Open Problem</button>';
-          html += '<button class="problem-adjust-btn" data-adjust="easier" data-problem-index="' + item.index + '">Easier</button>';
-          html += '<button class="problem-adjust-btn" data-adjust="harder" data-problem-index="' + item.index + '">Harder</button>';
+          // Full rendered exercise
+          html += '<div class="exercise-full">' + renderMarkdown(prob.problem) + '</div>';
+          html += '<div class="exercise-card-actions">';
+          html += '<button class="exercise-card-btn" data-exercise-index="' + item.index + '">Open Exercise</button>';
+          html += '<button class="exercise-adjust-btn" data-adjust="easier" data-exercise-index="' + item.index + '">Easier</button>';
+          html += '<button class="exercise-adjust-btn" data-adjust="harder" data-exercise-index="' + item.index + '">Harder</button>';
           html += '</div>';
           html += '</div>';
           html += '</div>';
@@ -1471,13 +1472,13 @@
         $("singleView").style.display = "none";
         $("chatView").classList.add("visible");
         $("extraModeLabel").style.display = "none";
-        $("problemActions").style.display = chatHistory.length > 0 ? "flex" : "none";
+        $("exerciseActions").style.display = chatHistory.length > 0 ? "flex" : "none";
         renderChatConversation();
       } else {
         $("singleView").style.display = "block";
         $("chatView").classList.remove("visible");
         $("extraModeLabel").style.display = "flex";
-        $("problemActions").style.display = "none";
+        $("exerciseActions").style.display = "none";
       }
     }
 
@@ -1492,54 +1493,54 @@
       mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
     }
 
-    // Problem generation
+    // Exercise generation
     // difficultyAdjustment: "", "easier", or "harder"
-    async function generateProblem(difficultyAdjustment) {
+    async function generateExercise(difficultyAdjustment) {
       setError("");
-      currentProblemRaw = "";
+      currentExerciseRaw = "";
       currentGeneratedAnswerRaw = "";
 
       if (isChatMode) {
         resetRightSidebarAssessmentUI();
         $("rightSidebarWelcome").style.display = "none";
-        $("rightProblemArea").style.display = "block";
-        $("rightProblemContent").style.display = "block";
-        $("rightProblemContent").classList.add("streaming-cursor");
+        $("rightExerciseArea").style.display = "block";
+        $("rightExerciseContent").style.display = "block";
+        $("rightExerciseContent").classList.add("streaming-cursor");
         $("rightAnswerInputArea").classList.remove("visible");
         $("rightStudentAnswer").value = "";
-        showThinking("rightProblemContent");
+        showThinking("rightExerciseContent");
         openRightSidebar();
       } else {
         resetGeneratedAnswerUI();
-        $("problemSection").style.display = "block";
-        $("problemSection").classList.add("visible");
+        $("exerciseSection").style.display = "block";
+        $("exerciseSection").classList.add("visible");
         $("answerInputArea").classList.remove("visible");
         resetAssessmentUI();
         $("studentAnswer").value = "";
-        showThinking("problemContent");
+        showThinking("exerciseContent");
       }
 
-      $("problemBtn").disabled = true;
-      $("newProblemBtn").disabled = true;
+      $("exerciseBtn").disabled = true;
+      $("newExerciseBtn").disabled = true;
       $("submitAnswerBtn").disabled = true;
       $("rightSubmitAnswerBtn").disabled = true;
-      setStatus("Generating problem…");
+      setStatus("Generating exercise…");
 
       try {
         var payload;
         var chatPayloadBase;
         if (isChatMode) {
-          logDebug("Problem request start (chat mode)", {
+          logDebug("Exercise request start (chat mode)", {
             turns: chatHistory.length,
             adjustment: difficultyAdjustment || "none",
             chatModel: getSelectedChatModel() || "(default)"
           });
           chatPayloadBase = {
             conversation_context: buildConversationContext(),
-            difficulty: $("problemDifficulty").value
+            difficulty: $("exerciseDifficulty").value
           };
         } else {
-          logDebug("Problem request start", {
+          logDebug("Exercise request start", {
             questionLen: (lastSingleQuestion || "").length,
             notesLen: (lastNotesAnswer || "").length,
             adjustment: difficultyAdjustment || "none",
@@ -1548,18 +1549,18 @@
           chatPayloadBase = {
             question: lastSingleQuestion,
             notes_answer: lastNotesAnswer,
-            difficulty: $("problemDifficulty").value
+            difficulty: $("exerciseDifficulty").value
           };
         }
 
         if (difficultyAdjustment) {
           chatPayloadBase.difficulty_adjustment = difficultyAdjustment;
           var prevProb = "";
-          if (activeProblemIndex >= 0 && activeProblemIndex < problems.length) {
-            prevProb = problems[activeProblemIndex].problem || "";
+          if (activeExerciseIndex >= 0 && activeExerciseIndex < exercises.length) {
+            prevProb = exercises[activeExerciseIndex].problem || "";
           }
-          if (!prevProb && currentProblemRaw) {
-            prevProb = currentProblemRaw;
+          if (!prevProb && currentExerciseRaw) {
+            prevProb = currentExerciseRaw;
           }
           if (prevProb) {
             chatPayloadBase.previous_problem = prevProb;
@@ -1578,79 +1579,79 @@
           var errText = await response.text();
           throw new Error("HTTP " + response.status + "\n" + errText);
         }
-        logDebug("Problem response", responseDebugInfo(response));
+        logDebug("Exercise response", responseDebugInfo(response));
 
-        var targetEl = isChatMode ? "rightProblemContent" : "problemContent";
+        var targetEl = isChatMode ? "rightExerciseContent" : "exerciseContent";
 
         await readEventStream(response, function (event, data) {
           if (event === "meta") {
-            logDebug("Problem stream meta", data);
+            logDebug("Exercise stream meta", data);
             return;
           }
           if (event === "status") {
-            logDebug("Problem stream status", data);
+            logDebug("Exercise stream status", data);
             if (data.phase === "generating") {
               $(targetEl).innerHTML = "";
             }
             return;
           }
           if (event === "token") {
-            currentProblemRaw += data.content || "";
-            $(targetEl).innerHTML = renderMarkdown(currentProblemRaw);
+            currentExerciseRaw += data.content || "";
+            $(targetEl).innerHTML = renderMarkdown(currentExerciseRaw);
             $(targetEl).classList.add("streaming-cursor");
             clearTimeout(mathRenderTimer);
             mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
             return;
           }
           if (event === "problem_done") {
-            logDebug("Problem stream problem_done", { problemLen: (data.problem || "").length });
+            logDebug("Exercise stream problem_done", { problemLen: (data.problem || "").length });
             if (data.problem) {
-              currentProblemRaw = data.problem;
-              $(targetEl).innerHTML = renderMarkdown(currentProblemRaw);
+              currentExerciseRaw = data.problem;
+              $(targetEl).innerHTML = renderMarkdown(currentExerciseRaw);
             }
             return;
           }
           if (event === "error") {
-            logDebug("Problem stream error", data);
-            throw new Error((data && data.message ? data.message : "Problem stream error") + (data && data.request_id ? " [request_id=" + data.request_id + "]" : ""));
+            logDebug("Exercise stream error", data);
+            throw new Error((data && data.message ? data.message : "Exercise stream error") + (data && data.request_id ? " [request_id=" + data.request_id + "]" : ""));
           }
           if (event === "done") {
-            logDebug("Problem stream done", data);
+            logDebug("Exercise stream done", data);
           }
         });
 
         // Final render
         $(targetEl).classList.remove("streaming-cursor");
-        $(targetEl).innerHTML = renderMarkdown(currentProblemRaw);
-        if (!currentProblemRaw.trim()) {
-          throw new Error("Problem generation returned empty output.");
+        $(targetEl).innerHTML = renderMarkdown(currentExerciseRaw);
+        if (!currentExerciseRaw.trim()) {
+          throw new Error("Exercise generation returned empty output.");
         }
 
         await typesetMath();
-        setStatus("Problem ready. Preparing answer key...");
+        setStatus("Exercise ready. Preparing answer key...");
 
         if (isChatMode) {
           $("rightAnswerInputArea").classList.add("visible");
-          addProblem(currentProblemRaw); // saves to problems array + localStorage
-          await calculateRightProblemAnswer();
+          addExercise(currentExerciseRaw); // saves to exercises array + localStorage
+          await calculateRightExerciseAnswer();
         } else {
           $("answerInputArea").classList.add("visible");
-          await calculateProblemAnswer();
+          await calculateExerciseAnswer();
         }
 
       } catch (e) {
-        logDebug("Problem request failed", { error: String(e) });
+        logDebug("Exercise request failed", { error: String(e) });
         setError(String(e));
         setStatus("Error");
       } finally {
-        $("problemBtn").disabled = false;
-        $("newProblemBtn").disabled = false;
+        $("exerciseBtn").disabled = false;
+        $("newExerciseBtn").disabled = false;
       }
     }
 
-    async function calculateProblemAnswer() {
+    async function calculateExerciseAnswer() {
       await _calculateAnswerCore(
-        { problem: currentProblemRaw, topic_question: lastSingleQuestion, notes_answer: lastNotesAnswer },
+        { problem: currentExerciseRaw, topic_question: lastSingleQuestion, notes_answer: lastNotesAnswer },
         "submitAnswerBtn", "showAnswerBtn", "single mode"
       );
     }
@@ -1669,7 +1670,7 @@
       setError("");
       rawNotes = "";
       rawExtra = "";
-      currentProblemRaw = "";
+      currentExerciseRaw = "";
       currentGeneratedAnswerRaw = "";
       resetGeneratedAnswerUI();
       resetAssessmentUI();
@@ -1677,11 +1678,11 @@
       var welcome = $("welcome");
       if (welcome) welcome.style.display = "none";
 
-      // Hide problem section when asking new question
-      $("problemSection").style.display = "none";
-      $("problemSection").classList.remove("visible");
+      // Hide exercise section when asking new question
+      $("exerciseSection").style.display = "none";
+      $("exerciseSection").classList.remove("visible");
       $("submitAnswerBtn").disabled = false;
-      $("newProblemBtn").disabled = false;
+      $("newExerciseBtn").disabled = false;
 
       var question = $("q").value.trim();
       var questionTime = Date.now();
@@ -1762,8 +1763,8 @@
           });
           finalizeStreamingBubble(streamCoverage);
           autoSaveCurrentConversation();
-          // Show Problem actions after first turn
-          $("problemActions").style.display = "flex";
+          // Show Exercise actions after first turn
+          $("exerciseActions").style.display = "flex";
         } else {
           $("notes").classList.remove("streaming-cursor");
           $("extra").classList.remove("streaming-cursor");
@@ -1958,11 +1959,11 @@
       syncLeftSidebarVar();
       syncLeftTogglePosition();
 
-      // Problem generation
-      $("problemBtn").addEventListener("click", function () { generateProblem(); });
+      // Exercise generation
+      $("exerciseBtn").addEventListener("click", function () { generateExercise(); });
 
-      // New problem button (single mode)
-      $("newProblemBtn").addEventListener("click", function () { generateProblem(); });
+      // New exercise button (single mode)
+      $("newExerciseBtn").addEventListener("click", function () { generateExercise(); });
 
       // Reveal generated answer (single mode)
       $("showAnswerBtn").addEventListener("click", toggleGeneratedAnswer);
@@ -2024,28 +2025,28 @@
 
       $("rightShowAnswerBtn").addEventListener("click", toggleRightGeneratedAnswer);
 
-      // Click on problem cards in chat to open them in right sidebar
+      // Click on exercise cards in chat to open them in right sidebar
       document.addEventListener("click", function (e) {
-        var btn = e.target.closest(".problem-card-btn");
+        var btn = e.target.closest(".exercise-card-btn");
         if (!btn) return;
-        var idx = parseInt(btn.getAttribute("data-problem-index"), 10);
+        var idx = parseInt(btn.getAttribute("data-exercise-index"), 10);
         if (isNaN(idx)) return;
-        activeProblemIndex = idx;
-        renderActiveProblem();
+        activeExerciseIndex = idx;
+        renderActiveExercise();
         openRightSidebar();
       });
 
-      // Easier / harder from problem bubbles
+      // Easier / harder from exercise bubbles
       document.addEventListener("click", function (e) {
-        var btn = e.target.closest(".problem-adjust-btn");
+        var btn = e.target.closest(".exercise-adjust-btn");
         if (!btn) return;
         var adj = btn.getAttribute("data-adjust");
-        var idx = parseInt(btn.getAttribute("data-problem-index"), 10);
+        var idx = parseInt(btn.getAttribute("data-exercise-index"), 10);
         if (!adj || isNaN(idx)) return;
         e.stopPropagation();
-        activeProblemIndex = idx;
-        renderActiveProblem();
-        generateProblem(adj);
+        activeExerciseIndex = idx;
+        renderActiveExercise();
+        generateExercise(adj);
       });
 
       $("rightSubmitAnswerBtn").addEventListener("click", submitRightAnswer);
