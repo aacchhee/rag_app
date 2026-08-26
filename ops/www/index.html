@@ -1225,9 +1225,10 @@
           html += '<div class="exercise-card-actions">';
           html += '<div class="exercise-adjust-row">';
           html += '<span class="exercise-adjust-title">Adjust exercise</span>';
-          html += '<div class="exercise-adjust-group">';
-          html += '<button class="exercise-adjust-btn" data-adjust="easier" data-exercise-index="' + item.index + '">Easier</button>';
-          html += '<button class="exercise-adjust-btn" data-adjust="harder" data-exercise-index="' + item.index + '">Harder</button>';
+          html += '<div class="segmented">';
+          html += '<button data-adjust="easier" data-exercise-index="' + item.index + '">Easier</button>';
+          html += '<button data-adjust="same" data-exercise-index="' + item.index + '">Same</button>';
+          html += '<button data-adjust="harder" data-exercise-index="' + item.index + '">Harder</button>';
           html += '</div>';
           html += '</div>';
           html += '<button class="exercise-card-btn" data-exercise-index="' + item.index + '">Open Exercise</button>';
@@ -2073,9 +2074,9 @@
         openRightSidebar();
       });
 
-      // Easier / harder from exercise bubbles
+      // Adjust difficulty / same from exercise bubbles
       document.addEventListener("click", function (e) {
-        var btn = e.target.closest(".exercise-adjust-btn");
+        var btn = e.target.closest(".exercise-card-actions .segmented button");
         if (!btn) return;
         var adj = btn.getAttribute("data-adjust");
         var idx = parseInt(btn.getAttribute("data-exercise-index"), 10);
@@ -2083,7 +2084,7 @@
         e.stopPropagation();
         activeExerciseIndex = idx;
         renderActiveExercise();
-        generateExercise(adj);
+        generateExercise(adj === "same" ? "" : adj);
       });
 
       $("rightSubmitAnswerBtn").addEventListener("click", submitRightAnswer);
