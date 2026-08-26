@@ -1464,10 +1464,28 @@ details > summary.box-title {
 }
 
 /* Problem bubble rendered inside chat stream */
-.problem-bubble .problem-card-preview {
+.chat-bubble.assistant.problem-bubble .chat-bubble-content {
+  background: #FBFAF4;
+  border: 1px solid #e5e1cd;
+}
+
+.problem-bubble .problem-full {
+  color: #41483e;
+  background: #F3F1E6;
+  border: 1px solid #ddd8c0;
+  border-radius: 11px;
+  padding: 14px 16px;
   font-size: 15px;
-  line-height: 1.6;
-  margin-bottom: 10px;
+  line-height: 1.65;
+  margin-bottom: 12px;
+}
+
+.problem-bubble .problem-full p {
+  margin: 0 0 8px;
+}
+
+.problem-bubble .problem-full p:last-child {
+  margin-bottom: 0;
 }
 
 .problem-bubble .problem-card-btn {
