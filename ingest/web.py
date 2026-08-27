@@ -267,26 +267,45 @@ def list_files():
 @app.post("/files")
 def upload_file():
     _bump_activity()
-    file = request.files.get("file")
-    if file is None or not file.filename:
+    files = request.files.getlist("file")
+    files = [f for f in files if f and f.filename]
+    if not files:
         return jsonify({"error": "no file provided"}), 400
-
-    filename = secure_filename(file.filename)
-    ext = Path(filename).suffix.lower().lstrip(".")
-    if ext not in SUPPORTED_EXTS:
-        return jsonify({"error": f"only {', '.join(sorted(SUPPORTED_EXTS))} files are allowed"}), 400
-
-    if ext == "pdf":
-        head = file.stream.read(5)
-        file.stream.seek(0)
-        if head != b"%PDF-":
-            return jsonify({"error": "file does not look like a PDF"}), 400
 
     course = (request.form.get("course") or "").strip()
     target_dir = _course_upload_dir(course) if course else COURSES_DIR / "uncategorized"
     target_dir.mkdir(parents=True, exist_ok=True)
-    file.save(target_dir / filename)
-    return jsonify({"saved": filename, "course": course or "uncategorized"})
+
+    uploaded: list[str] = []
+    skipped: list[str] = []
+
+    for file in files:
+        filename = secure_filename(file.filename)
+        ext = Path(filename).suffix.lower().lstrip(".")
+        if ext not in SUPPORTED_EXTS:
+            skipped.append(f"{filename} (unsupported type)")
+            continue
+
+        if ext == "pdf":
+            head = file.stream.read(5)
+            file.stream.seek(0)
+            if head != b"%PDF-":
+                skipped.append(f"{filename} (does not look like a PDF)")
+                continue
+
+        file.save(target_dir / filename)
+        uploaded.append(filename)
+
+    if not uploaded and skipped:
+        return jsonify({"error": "no valid files to upload", "skipped": skipped}), 400
+
+    return jsonify({
+        "uploaded": uploaded,
+        "uploaded_count": len(uploaded),
+        "skipped": skipped,
+        "skipped_count": len(skipped),
+        "course": course or "uncategorized",
+    })
 
 
 @app.delete("/files/<path:filename>")
@@ -350,7 +369,7 @@ _PAGE = """<!doctype html>
   <h2>Upload File</h2>
   <p>Select a course, then upload a PDF, Markdown, or QMD file. It will be ingested into that course.</p>
   <select id="course-select"><option value="">-- select course --</option></select><br><br>
-  <input type="file" id="file-input" accept=".pdf,.md,.qmd,application/pdf,text/markdown">
+  <input type="file" id="file-input" multiple accept=".pdf,.md,.qmd,application/pdf,text/markdown">
   <button onclick="uploadFile()">Upload</button>
   <div id="upload-msg"></div>
   <ul id="file-list"></ul>
@@ -460,18 +479,20 @@ async function loadFiles() {
 }
 
 async function uploadFile() {
-  const file = fileInputEl.files[0];
+  const files = fileInputEl.files;
   const course = courseSelect.value;
   if (!course) {
     uploadMsgEl.textContent = 'Please select a course first.';
     return;
   }
-  if (!file) {
-    uploadMsgEl.textContent = 'Please select a file first.';
+  if (!files || !files.length) {
+    uploadMsgEl.textContent = 'Please select at least one file first.';
     return;
   }
   const formData = new FormData();
-  formData.append('file', file);
+  for (let i = 0; i < files.length; i++) {
+    formData.append('file', files[i]);
+  }
   formData.append('course', course);
   const res = await fetch('/files', { method: 'POST', body: formData });
   const body = await res.json().catch(() => ({}));
@@ -479,7 +500,14 @@ async function uploadFile() {
     uploadMsgEl.textContent = 'Error: ' + (body.error || res.statusText);
     return;
   }
-  uploadMsgEl.textContent = body.saved + ' uploaded to ' + body.course + '.';
+  const msgParts = [];
+  if (body.uploaded_count) {
+    msgParts.push(body.uploaded_count + ' file(s) uploaded to ' + body.course);
+  }
+  if (body.skipped_count) {
+    msgParts.push(body.skipped_count + ' skipped (' + body.skipped.join(', ') + ')');
+  }
+  uploadMsgEl.textContent = msgParts.join(' | ');
   fileInputEl.value = '';
   loadFiles();
 }
