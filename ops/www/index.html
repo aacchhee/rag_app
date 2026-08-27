@@ -185,23 +185,34 @@
             <button id="rightExerciseExpandBtn" class="exercise-expand-btn" type="button">Show more</button>
           </div>
 
-          <div id="rightAnswerInputArea" class="answer-input-area visible">
-            <label for="rightStudentAnswer">Your answer:</label>
-            <textarea id="rightStudentAnswer" class="answer-input"
-              placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
-            <div class="row">
-              <button id="rightHintBtn" class="hint-btn" type="button">💡</button>
-              <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
-              <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
-            </div>
-          </div>
-
           <h3 id="rightGeneratedAnswerTitle" class="box-title" style="display:none;">Answer</h3>
           <div id="rightGeneratedAnswerBox" class="generated-answer-box answer" style="display:none;"></div>
           <h3 id="rightHintTitle" class="box-title" style="display:none;">Hint</h3>
           <div id="rightHintBox" class="hint-box" style="display:none;"></div>
           <h3 id="rightAssessmentTitle" class="box-title" style="display:none;">Assessment</h3>
           <div id="rightAssessmentBox" class="assessment-box" style="display:none;"></div>
+        </div>
+      </div>
+
+      <!-- Sticky input area at bottom of right sidebar -->
+      <div class="right-sidebar-input">
+        <div id="rightAnswerInputArea" class="answer-input-area">
+          <label for="rightStudentAnswer">Your answer:</label>
+          <div class="composer">
+            <textarea id="rightStudentAnswer" class="answer-input"
+              placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)" rows="1"></textarea>
+            <button id="rightAnswerSendBtn" type="button" aria-label="Send" title="Send (Ctrl+Enter)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5"></line>
+                <polyline points="5 12 12 5 19 12"></polyline>
+              </svg>
+            </button>
+          </div>
+          <div class="row right-sidebar-actions">
+            <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
+            <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
+            <button id="rightHintBtn" class="hint-btn" type="button">💡 Hint</button>
+          </div>
         </div>
       </div>
     </div>
@@ -704,6 +715,7 @@
       resetRightSidebarAssessmentUI();
       $("rightSidebarWelcome").style.display = "flex";
       $("rightExerciseArea").style.display = "none";
+      $("rightAnswerInputArea").classList.remove("visible");
       $("rightSidebarTitle").textContent = "Practice Exercises";
       $("rightStudentAnswer").value = "";
       $("welcome").style.display = "flex";
@@ -729,6 +741,7 @@
       } else {
         $("rightSidebarWelcome").style.display = "flex";
         $("rightExerciseArea").style.display = "none";
+        $("rightAnswerInputArea").classList.remove("visible");
       }
       renderChatConversation();
       $("exerciseActions").style.display = chatHistory.length > 0 ? "flex" : "none";
