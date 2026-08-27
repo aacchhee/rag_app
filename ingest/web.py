@@ -154,6 +154,8 @@ def list_sources():
     if manifest is None:
         return jsonify({"indexed": False, "sources": []})
     sources = manifest.get("sources", {})
+    course_filter = (request.args.get("course") or "").strip()
+
     items = [
         {
             "source": src,
@@ -163,6 +165,10 @@ def list_sources():
         }
         for src, meta in sorted(sources.items())
     ]
+
+    if course_filter:
+        items = [item for item in items if item["course"] == course_filter]
+
     return jsonify(
         {
             "indexed": True,
@@ -485,21 +491,33 @@ async function deleteFile(name) {
   loadFiles();
 }
 
-loadCourses();
-loadFiles();
+courseSelect.addEventListener('change', () => {
+  loadFiles();
+  loadSources();
+});
+
+async function init() {
+  await loadCourses();
+  loadFiles();
+  loadSources();
+}
+init();
 
 async function loadSources() {
+  const course = courseSelect.value;
+  const qs = course ? '?course=' + encodeURIComponent(course) : '';
   const tbody = document.querySelector('#sources-table tbody');
   const summary = document.getElementById('sources-summary');
   try {
-    const res = await fetch('/sources');
+    const res = await fetch('/sources' + qs);
     const data = await res.json();
     if (!data.indexed) {
       summary.textContent = 'Nothing indexed yet. Run an ingest first.';
       tbody.innerHTML = '';
       return;
     }
-    summary.textContent = `Collection: ${data.collection || '-'} | dim=${data.embedding_dim || '-'} | ${data.total_sources} sources | ${data.total_chunks} chunks`;
+    const filterHint = course ? ` (course: ${course})` : '';
+    summary.textContent = `Collection: ${data.collection || '-'} | dim=${data.embedding_dim || '-'} | ${data.total_sources} sources | ${data.total_chunks} chunks${filterHint}`;
     tbody.innerHTML = '';
     for (const item of data.sources) {
       const tr = document.createElement('tr');
@@ -522,8 +540,6 @@ async function loadSources() {
     summary.textContent = 'Failed to load sources: ' + e.message;
   }
 }
-
-loadSources();
 
 async function runIngest() {
   const res = await fetch('/run', {
