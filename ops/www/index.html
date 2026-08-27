@@ -22,7 +22,10 @@
         displayMath: [['\\[', '\\]'], ['$$', '$$']],
         processEscapes: true
       },
-      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] }
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] },
+      chtml: {
+        mtextInheritFont: true
+      }
     };
   </script>
   <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
@@ -367,8 +370,9 @@
       var html = marked.parse(text, { breaks: true });
 
       // 3. Restore LaTeX placeholders
+      // Escape < to prevent the browser treating math content like \sum_{i<k} as HTML tags.
       placeholders.forEach(function (p) {
-        html = html.replace(p.id, p.content);
+        html = html.replace(p.id, p.content.replace(/</g, "&lt;"));
       });
 
       return html;

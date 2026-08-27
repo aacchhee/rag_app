@@ -422,7 +422,8 @@ select {
 .messages-area {
   flex: 1;
   overflow-y: auto;
-  min-width: 320px;
+  overflow-x: hidden;
+  min-width: 0;
 }
 
 .messages-inner {
@@ -1016,7 +1017,7 @@ code {
 
 .chat-bubble.assistant .assistant-row {
   display: grid;
-  grid-template-columns: 36px 1fr;
+  grid-template-columns: 36px minmax(0, 1fr);
   gap: 14px;
   align-items: start;
   width: 100%;
@@ -1476,6 +1477,38 @@ details > summary.box-title {
   font-size: 12px;
   line-height: 1.5;
   color: #333;
+}
+
+/* Constrain assistant bubble content so wide math can't stretch the page */
+.chat-bubble.assistant .chat-bubble-content,
+.answer,
+.exercise-box,
+.generated-answer-box,
+.assessment-box,
+.hint-box {
+  min-width: 0;
+  max-width: 100%;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Display math: constrain width, scroll locally, match text size */
+.exercise-box mjx-container[display="true"],
+.assessment-box mjx-container[display="true"],
+.hint-box mjx-container[display="true"],
+.chat-bubble-content mjx-container[display="true"],
+.generated-answer-box mjx-container[display="true"],
+.right-sidebar-content mjx-container[display="true"],
+.answer mjx-container[display="true"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  display: block;
+  font-size: 1em !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #c5c5c5 transparent;
 }
 
 /* Status badge */
