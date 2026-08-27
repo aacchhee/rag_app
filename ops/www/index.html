@@ -625,6 +625,9 @@
     }
 
     function downloadConversation(id) {
+      if (id === currentConvId) {
+        autoSaveCurrentConversation();
+      }
       var conv = loadConversation(id);
       if (!conv) return;
       var blob = new Blob([JSON.stringify(conv, null, 2)], { type: "application/json" });
@@ -664,7 +667,7 @@
           title: (data.title || "Imported conversation"),
           updated: Date.now(),
           history: data.history,
-          problems: Array.isArray(data.problems) ? data.problems : []
+          exercises: Array.isArray(data.exercises) ? data.exercises : (Array.isArray(data.problems) ? data.problems : [])
         };
         try {
           localStorage.setItem(_convKey(newId), JSON.stringify(entry));
@@ -732,6 +735,12 @@
       if (!chatHistory.length) return;
       if (!currentConvId) {
         currentConvId = "conv_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+      }
+      // Sync active exercise in-memory state before saving
+      if (activeExerciseIndex >= 0 && activeExerciseIndex < exercises.length) {
+        exercises[activeExerciseIndex].problem = currentExerciseRaw;
+        exercises[activeExerciseIndex].generated_answer = currentGeneratedAnswerRaw;
+        exercises[activeExerciseIndex].student_answer = $("rightStudentAnswer").value;
       }
       var title = conversationTitleFromHistory(chatHistory);
       saveConversation(currentConvId, title, chatHistory, exercises);
