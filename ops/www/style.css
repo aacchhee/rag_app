@@ -337,10 +337,10 @@ textarea {
   position: absolute;
   right: 6px;
   bottom: 6px;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  border-radius: 10px;
+  border-radius: 9px;
   background: var(--green);
   color: #fff;
   display: inline-flex;
@@ -581,7 +581,7 @@ select {
   flex: 1;
 }
 
-.input-row button {
+.input-row > button {
   align-self: stretch;
   min-width: 64px;
   padding: 10px 16px;
@@ -591,7 +591,7 @@ select {
   font-weight: 650;
 }
 
-.input-row button:hover {
+.input-row > button:hover {
   background: var(--green-2);
 }
 
