@@ -177,17 +177,14 @@
           Click "Exercise" to generate a practice exercise from this conversation.
         </div>
         <div id="rightExerciseArea" style="display:none;">
-          <!-- Collapsible exercise problem at top -->
-          <details class="exercise-problem-collapsible" id="rightExerciseProblem" open>
-            <summary class="exercise-problem-summary">Exercise</summary>
-            <div id="rightExerciseWrapper" class="exercise-truncated">
-              <div id="rightExerciseContent" class="exercise-box"></div>
-              <div class="exercise-gradient-mask"></div>
-            </div>
-            <div id="rightExerciseToggleBox" class="exercise-toggle-box">
-              <button id="rightExerciseExpandBtn" class="exercise-expand-btn" type="button">Show more</button>
-            </div>
-          </details>
+          <!-- Exercise problem with show more/less -->
+          <div id="rightExerciseWrapper" class="exercise-truncated">
+            <div id="rightExerciseContent" class="exercise-box"></div>
+            <div class="exercise-gradient-mask"></div>
+          </div>
+          <div id="rightExerciseToggleBox" class="exercise-toggle-box">
+            <button id="rightExerciseExpandBtn" class="exercise-expand-btn" type="button">Show more</button>
+          </div>
 
           <!-- Chat scroll area -->
           <div class="right-chat-scroll" id="rightChatScroll"></div>
@@ -206,11 +203,6 @@
       <!-- Sticky input area at bottom of right sidebar -->
       <div class="right-sidebar-input">
         <div id="rightAnswerInputArea" class="answer-input-area">
-          <div class="row right-sidebar-actions">
-            <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
-            <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
-            <button id="rightHintBtn" class="hint-btn" type="button">💡 Hint</button>
-          </div>
           <div class="composer">
             <textarea id="rightStudentAnswer" class="answer-input"
               placeholder="Ask about this exercise or enter your answer…" rows="1"></textarea>
@@ -220,6 +212,11 @@
                 <polyline points="5 12 12 5 19 12"></polyline>
               </svg>
             </button>
+          </div>
+          <div class="row right-sidebar-actions">
+            <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
+            <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
+            <button id="rightHintBtn" class="hint-btn" type="button">💡 Hint</button>
           </div>
         </div>
       </div>
@@ -913,6 +910,7 @@
         if (msg.role === "user") {
           html += '<div class="chat-bubble user">';
           html += '<div class="chat-bubble-content">' + escapeHtml(msg.text) + '</div>';
+          html += '<div class="message-meta">You</div>';
           html += '</div>';
         } else if (msg.role === "assistant") {
           var bubbleAttrs = msg.bubbleId ? ' id="' + msg.bubbleId + '"' : '';
