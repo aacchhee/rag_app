@@ -1158,6 +1158,90 @@ def assess_answer():
     return _stream_response(generate())
 
 
+@app.post("/rag2/exercise-chat")
+def exercise_chat():
+    data = request.get_json(force=True) or {}
+    request_id = current_request_id()
+
+    problem = (data.get("problem") or "").strip()
+    messages = data.get("messages", [])
+    text = (data.get("text") or "").strip()
+    chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
+    if error_response:
+        return error_response
+
+    if not problem:
+        return jsonify(error="Missing 'problem'", request_id=request_id), 400
+    if not text:
+        return jsonify(error="Missing 'text'", request_id=request_id), 400
+
+    course = (data.get("course") or "").strip() or None
+    generated_answer = (data.get("generated_answer") or "").strip()
+
+    # Retrieve based on the problem text
+    q_emb = embed_query(problem)
+    hits = retriever.search(q_emb, top_k=RAG.TOP_K_DEFAULT, log_hits=True, course=course)
+    sources, source_blocks = render_sources(hits)
+
+    app.logger.info(
+        "[req:%s] /rag2/exercise-chat problem_len=%d text_len=%d hits=%d chat_model=%s course=%s",
+        request_id,
+        len(problem),
+        len(text),
+        len(hits),
+        chat_model,
+        course or "-",
+    )
+
+    def generate():
+        yield _sse("meta", {"request_id": request_id, "chat_model": chat_model})
+        yield _sse("status", {"phase": "thinking"})
+
+        system_e = (
+            "You are a helpful math tutor. A student is working on a practice problem from their course materials.\n"
+            "Use the SOURCES and the EXERCISE CONTEXT to answer their question.\n"
+            "Be encouraging, use LaTeX for math, and do not give away the full\n"
+            "answer unless the student explicitly asks for it or the context says to.\n"
+            "If the student's answer is correct, confirm it. If wrong, guide them\n"
+            "toward the right approach without just giving the solution.\n\n"
+            "RULES:\n"
+            "- Cite sources like [S1], [S2] when relevant\n"
+            "- Keep responses concise and focused\n"
+            "- Use LaTeX for all math formulas"
+        )
+
+        user_e = "EXERCISE CONTEXT:\n" + problem
+        if generated_answer:
+            user_e += "\n\nGENERATED ANSWER KEY (for reference; do not reveal unless asked):\n" + generated_answer
+
+        # Include prior chat history from the exercise
+        if messages:
+            history_lines = []
+            for m in messages:
+                role_label = "Student" if m.get("role") == "user" else "Tutor"
+                history_lines.append(f"{role_label}: {m.get('text', '')}")
+            user_e += "\n\nCONVERSATION HISTORY:\n" + "\n".join(history_lines)
+
+        user_e += "\n\nSOURCES:\n" + "\n".join(source_blocks)
+        user_e += f"\n\nSTUDENT'S MESSAGE:\n{text}\n\nRespond as the tutor."
+
+        yield _sse("status", {"phase": "notes"})
+
+        raw = ""
+        for token in chat_completion_stream(
+            [{"role": "system", "content": system_e}, {"role": "user", "content": user_e}],
+            temperature=0.6, max_tokens=2000,
+            chat_model=chat_model,
+        ):
+            raw += token
+            yield _sse("token", {"content": token})
+
+        app.logger.info("[req:%s] /rag2/exercise-chat complete raw_len=%d", request_id, len(raw))
+        yield _sse("done", {"request_id": request_id, "chat_model": chat_model, "ok": True})
+
+    return _stream_response(generate())
+
+
 @app.get("/courses")
 def get_courses():
     return jsonify(list_courses())

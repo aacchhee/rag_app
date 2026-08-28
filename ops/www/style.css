@@ -1318,6 +1318,143 @@ details > summary.box-title {
   color: var(--green-2);
 }
 
+/* Collapsible exercise problem in right sidebar */
+.exercise-problem-collapsible {
+  border: 1px solid var(--task-line);
+  border-radius: 12px;
+  background: var(--task-bg);
+  overflow: hidden;
+}
+
+.exercise-problem-summary {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.exercise-problem-summary::-webkit-details-marker {
+  display: none;
+}
+
+.exercise-problem-summary::before {
+  content: "▸ ";
+  display: inline-block;
+  margin-right: 4px;
+  transition: transform 0.15s;
+}
+
+.exercise-problem-collapsible[open] .exercise-problem-summary::before {
+  transform: rotate(90deg);
+}
+
+.exercise-problem-collapsible .exercise-truncated {
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+}
+
+.exercise-problem-collapsible .exercise-toggle-box {
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+}
+
+/* Right sidebar chat scroll area */
+.right-chat-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Chat bubbles in right sidebar (reuse center chat styles) */
+.right-chat-scroll .chat-bubble {
+  margin-bottom: 0;
+}
+
+.right-chat-scroll .chat-bubble.user {
+  align-self: flex-end;
+}
+
+.right-chat-scroll .chat-bubble.assistant {
+  align-self: flex-start;
+}
+
+.right-chat-scroll .chat-bubble.user .chat-bubble-content {
+  max-width: 260px;
+  padding: 10px 14px;
+  font-size: 14px;
+  border-radius: 14px 14px 4px 14px;
+}
+
+.right-chat-scroll .chat-bubble.assistant .chat-bubble-content {
+  max-width: 280px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+/* Answer reveal (toggleable, outside chat flow) */
+.answer-reveal {
+  flex-shrink: 0;
+  margin: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255,255,255,.65);
+  overflow: hidden;
+}
+
+.answer-reveal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--green-pale);
+}
+
+.answer-reveal-header span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--green);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.answer-reveal-close {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.answer-reveal-body {
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: #41483e;
+}
+
+.answer-reveal-body p {
+  margin: 0 0 8px;
+}
+
+.answer-reveal-body p:last-child {
+  margin-bottom: 0;
+}
+
 .exercise-truncated.expanded .exercise-gradient-mask {
   opacity: 0;
 }

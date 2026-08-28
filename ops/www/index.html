@@ -177,41 +177,49 @@
           Click "Exercise" to generate a practice exercise from this conversation.
         </div>
         <div id="rightExerciseArea" style="display:none;">
-          <div id="rightExerciseWrapper" class="exercise-truncated">
-            <div id="rightExerciseContent" class="exercise-box"></div>
-            <div class="exercise-gradient-mask"></div>
-          </div>
-          <div id="rightExerciseToggleBox" class="exercise-toggle-box">
-            <button id="rightExerciseExpandBtn" class="exercise-expand-btn" type="button">Show more</button>
-          </div>
+          <!-- Collapsible exercise problem at top -->
+          <details class="exercise-problem-collapsible" id="rightExerciseProblem" open>
+            <summary class="exercise-problem-summary">Exercise</summary>
+            <div id="rightExerciseWrapper" class="exercise-truncated">
+              <div id="rightExerciseContent" class="exercise-box"></div>
+              <div class="exercise-gradient-mask"></div>
+            </div>
+            <div id="rightExerciseToggleBox" class="exercise-toggle-box">
+              <button id="rightExerciseExpandBtn" class="exercise-expand-btn" type="button">Show more</button>
+            </div>
+          </details>
 
-          <h3 id="rightGeneratedAnswerTitle" class="box-title" style="display:none;">Answer</h3>
-          <div id="rightGeneratedAnswerBox" class="generated-answer-box answer" style="display:none;"></div>
-          <h3 id="rightHintTitle" class="box-title" style="display:none;">Hint</h3>
-          <div id="rightHintBox" class="hint-box" style="display:none;"></div>
-          <h3 id="rightAssessmentTitle" class="box-title" style="display:none;">Assessment</h3>
-          <div id="rightAssessmentBox" class="assessment-box" style="display:none;"></div>
+          <!-- Chat scroll area -->
+          <div class="right-chat-scroll" id="rightChatScroll"></div>
+
+          <!-- Answer reveal (toggleable, outside chat flow) -->
+          <div class="answer-reveal" id="rightAnswerReveal" hidden>
+            <div class="answer-reveal-header">
+              <span>Answer</span>
+              <button id="rightHideAnswerBtn" class="answer-reveal-close" type="button">Hide</button>
+            </div>
+            <div class="answer-reveal-body" id="rightAnswerRevealBody"></div>
+          </div>
         </div>
       </div>
 
       <!-- Sticky input area at bottom of right sidebar -->
       <div class="right-sidebar-input">
         <div id="rightAnswerInputArea" class="answer-input-area">
-          <label for="rightStudentAnswer">Your answer:</label>
+          <div class="row right-sidebar-actions">
+            <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
+            <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
+            <button id="rightHintBtn" class="hint-btn" type="button">💡 Hint</button>
+          </div>
           <div class="composer">
             <textarea id="rightStudentAnswer" class="answer-input"
-              placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)" rows="1"></textarea>
-            <button id="rightAnswerSendBtn" type="button" aria-label="Send" title="Send (Ctrl+Enter)">
+              placeholder="Ask about this exercise or enter your answer…" rows="1"></textarea>
+            <button id="rightAnswerSendBtn" type="button" aria-label="Send" title="Send">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="12" y1="19" x2="12" y2="5"></line>
                 <polyline points="5 12 12 5 19 12"></polyline>
               </svg>
             </button>
-          </div>
-          <div class="row right-sidebar-actions">
-            <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
-            <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
-            <button id="rightHintBtn" class="hint-btn" type="button">💡 Hint</button>
           </div>
         </div>
       </div>
@@ -790,19 +798,12 @@
     }
 
     function resetRightSidebarExerciseUI() {
-      $("rightGeneratedAnswerTitle").style.display = "none";
-      $("rightGeneratedAnswerBox").classList.remove("visible");
-      $("rightGeneratedAnswerBox").innerHTML = "";
-      $("rightGeneratedAnswerBox").style.display = "none";
       $("rightShowAnswerBtn").textContent = "Show answer";
       $("rightShowAnswerBtn").disabled = true;
     }
 
     function resetRightSidebarAssessmentUI() {
-      $("rightAssessmentTitle").style.display = "none";
-      $("rightAssessmentBox").classList.remove("visible");
-      $("rightAssessmentBox").innerHTML = "";
-      $("rightAssessmentBox").style.display = "none";
+      // no-op; assessment lives in chat messages now
     }
 
     function animateSync(fn, duration) {
@@ -860,41 +861,90 @@
       truncWrap.classList.remove("expanded");
       truncWrap.classList.remove("overflowing");
       $("rightAnswerInputArea").classList.add("visible");
-      $("rightStudentAnswer").value = prob.student_answer || "";
+      $("rightStudentAnswer").value = "";
 
-      // Generated answer
-      if (prob.generated_answer_shown) {
-        $("rightGeneratedAnswerTitle").style.display = "block";
-        $("rightGeneratedAnswerBox").style.display = "block";
-        $("rightGeneratedAnswerBox").innerHTML = renderMarkdown(prob.generated_answer || "");
-        $("rightGeneratedAnswerBox").classList.add("visible");
-        $("rightShowAnswerBtn").textContent = "Hide answer";
-        $("rightShowAnswerBtn").disabled = false;
-      } else {
-        $("rightGeneratedAnswerTitle").style.display = "none";
-        $("rightGeneratedAnswerBox").classList.remove("visible");
-        $("rightGeneratedAnswerBox").style.display = "none";
-        $("rightGeneratedAnswerBox").innerHTML = "";
-        $("rightShowAnswerBtn").textContent = "Show answer";
-        $("rightShowAnswerBtn").disabled = !currentGeneratedAnswerRaw.trim();
+      // Migrate old generated_answer_shown to new answer_shown
+      if (typeof prob.answer_shown === "undefined") {
+        prob.answer_shown = !!prob.generated_answer_shown;
+      }
+      // Migrate old messages
+      if (!Array.isArray(prob.messages)) {
+        prob.messages = [];
       }
 
-      // Assessment
-      if (prob.assessment) {
-        $("rightAssessmentTitle").style.display = "block";
-        $("rightAssessmentBox").style.display = "block";
-        $("rightAssessmentBox").innerHTML = renderMarkdown(prob.assessment);
-        $("rightAssessmentBox").classList.add("visible");
-      } else {
-        $("rightAssessmentTitle").style.display = "none";
-        $("rightAssessmentBox").classList.remove("visible");
-        $("rightAssessmentBox").style.display = "none";
-        $("rightAssessmentBox").innerHTML = "";
-      }
+      // Render chat + answer reveal
+      renderRightChat();
+      renderRightAnswerReveal();
+
+      $("rightShowAnswerBtn").disabled = !currentGeneratedAnswerRaw.trim();
 
       typesetMath();
       renderChatConversation();
       setTimeout(checkExerciseOverflow, 100);
+    }
+
+    // Right sidebar exercise chat rendering
+    function renderRightChat() {
+      var scroll = $("rightChatScroll");
+      if (!scroll) return;
+      var prob = exercises[activeExerciseIndex];
+      if (!prob || !Array.isArray(prob.messages)) {
+        scroll.innerHTML = "";
+        return;
+      }
+
+      var html = "";
+      prob.messages.forEach(function (msg) {
+        if (msg.role === "user") {
+          html += '<div class="chat-bubble user">';
+          html += '<div class="chat-bubble-content">' + escapeHtml(msg.text) + '</div>';
+          html += '</div>';
+        } else if (msg.role === "assistant") {
+          var bubbleAttrs = msg.bubbleId ? ' id="' + msg.bubbleId + '"' : '';
+          var md = msg.text ? renderMarkdown(msg.text) : '<div class="thinking"><div class="thinking-dots"><span></span><span></span><span></span></div> Thinking…</div>';
+          html += '<div class="chat-bubble assistant"' + bubbleAttrs + '>';
+          html += '<div class="assistant-row">';
+          html += '<div class="assistant-avatar" aria-hidden="true">RAG</div>';
+          html += '<div class="assistant-body">';
+          html += '<div class="assistant-label">Tutor <span>&middot;</span> <small>' + (msg.kind || "chat") + '</small></div>';
+          html += '<div class="chat-bubble-content" data-raw="' + escapeHtml(msg.text || "") + '">' + md + '</div>';
+          html += '</div></div></div>';
+        }
+      });
+
+      scroll.innerHTML = html;
+      scroll.scrollTop = scroll.scrollHeight;
+      typesetMath();
+    }
+
+    function renderRightAnswerReveal() {
+      var reveal = $("rightAnswerReveal");
+      var body = $("rightAnswerRevealBody");
+      var prob = exercises[activeExerciseIndex];
+      if (!reveal || !body || !prob) return;
+
+      if (prob.answer_shown && currentGeneratedAnswerRaw.trim()) {
+        reveal.hidden = false;
+        body.innerHTML = renderMarkdown(currentGeneratedAnswerRaw);
+        $("rightShowAnswerBtn").textContent = "Hide answer";
+      } else {
+        reveal.hidden = true;
+        body.innerHTML = "";
+        $("rightShowAnswerBtn").textContent = "Show answer";
+      }
+    }
+
+    function addRightMessage(text, role, kind) {
+      var prob = exercises[activeExerciseIndex];
+      if (!prob || !Array.isArray(prob.messages)) return;
+      prob.messages.push({
+        role: role || "user",
+        text: text || "",
+        kind: kind || "chat",
+        createdAt: Date.now()
+      });
+      renderRightChat();
+      if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
     }
 
     function checkExerciseOverflow() {
@@ -926,6 +976,8 @@
         student_answer: "",
         assessment: "",
         generated_answer_shown: false,
+        answer_shown: false,
+        messages: [],
         createdAt: Date.now()
       };
       exercises.push(prob);
@@ -935,30 +987,108 @@
     }
 
     // --- Hint ---
+    // --- Right-sidebar chat helpers ---
+    function _pushRightUserMessage(text) {
+      var prob = exercises[activeExerciseIndex];
+      if (!prob || !Array.isArray(prob.messages)) return null;
+      prob.messages.push({ role: "user", text: text, kind: "chat", createdAt: Date.now() });
+      return prob;
+    }
+
+    function _appendRightAssistantToken(bubbleId, token) {
+      var el = document.getElementById(bubbleId);
+      if (!el) return null;
+      var contentEl = el.querySelector(".chat-bubble-content");
+      if (!contentEl) return null;
+      var current = contentEl.dataset.raw || "";
+      current += token;
+      contentEl.dataset.raw = current;
+      contentEl.innerHTML = renderMarkdown(current);
+      contentEl.classList.add("streaming-cursor");
+      clearTimeout(mathRenderTimer);
+      mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
+      return current;
+    }
+
+    function _finalizeRightAssistantBubble(bubbleId) {
+      var el = document.getElementById(bubbleId);
+      if (!el) return "";
+      var contentEl = el.querySelector(".chat-bubble-content");
+      if (contentEl) contentEl.classList.remove("streaming-cursor");
+      return contentEl ? (contentEl.dataset.raw || "") : "";
+    }
+
     async function requestHint(isRight) {
       var exerciseText = currentExerciseRaw || "";
       if (!exerciseText) return;
-      var payload = applySelectedChatModel({ problem: exerciseText });
-      var btnId = isRight ? "rightHintBtn" : "hintBtn";
-      var boxId = isRight ? "rightHintBox" : "hintBox";
-      var titleId = isRight ? "rightHintTitle" : "hintTitle";
 
-      // Hide other output boxes
+      // Right sidebar: chat-based hint
       if (isRight) {
-        $("rightGeneratedAnswerTitle").style.display = "none";
-        $("rightGeneratedAnswerBox").classList.remove("visible");
-        $("rightGeneratedAnswerBox").style.display = "none";
-        $("rightAssessmentTitle").style.display = "none";
-        $("rightAssessmentBox").classList.remove("visible");
-        $("rightAssessmentBox").style.display = "none";
-      } else {
-        $("generatedAnswerTitle").style.display = "none";
-        $("generatedAnswerBox").classList.remove("visible");
-        $("generatedAnswerBox").style.display = "none";
-        $("assessmentTitle").style.display = "none";
-        $("assessmentBox").classList.remove("visible");
-        $("assessmentBox").style.display = "none";
+        var prob = exercises[activeExerciseIndex];
+        if (!prob || !Array.isArray(prob.messages)) return;
+
+        _pushRightUserMessage("Give me a hint");
+
+        var bubbleId = "hint_" + Date.now();
+        prob.messages.push({ role: "assistant", text: "", kind: "hint", createdAt: Date.now(), bubbleId: bubbleId });
+        renderRightChat();
+        var scroll = $("rightChatScroll");
+        if (scroll) scroll.scrollTop = scroll.scrollHeight;
+
+        $("rightHintBtn").disabled = true;
+        var hintRaw = "";
+        try {
+          var payload = applySelectedCourse(applySelectedChatModel({ problem: exerciseText }));
+          var response = await fetch("/rag2/hint", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          if (!response.ok) throw new Error("HTTP " + response.status);
+          logDebug("Hint response", responseDebugInfo(response));
+          await readEventStream(response, function (event, data) {
+            if (event === "token") {
+              hintRaw = _appendRightAssistantToken(bubbleId, data.content || "") || hintRaw;
+              if (scroll) scroll.scrollTop = scroll.scrollHeight;
+              return;
+            }
+            if (event === "done") {
+              hintRaw = _finalizeRightAssistantBubble(bubbleId) || hintRaw;
+              typesetMath();
+            }
+          });
+          // Update stored message text
+          if (prob.messages.length > 0) {
+            var last = prob.messages[prob.messages.length - 1];
+            if (last.bubbleId === bubbleId) last.text = hintRaw;
+          }
+          if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
+        } catch (err) {
+          var failMsg = "Hint failed: " + err.message;
+          var failEl = document.getElementById(bubbleId);
+          if (failEl) {
+            var c = failEl.querySelector(".chat-bubble-content");
+            if (c) { c.textContent = failMsg; c.classList.remove("streaming-cursor"); }
+          }
+          if (prob.messages.length > 0) {
+            var last2 = prob.messages[prob.messages.length - 1];
+            if (last2.bubbleId === bubbleId) last2.text = failMsg;
+          }
+        } finally {
+          $("rightHintBtn").disabled = false;
+          typesetMath();
+        }
+        return;
       }
+
+      // Single mode (center panel) unchanged
+      var payload = applySelectedChatModel({ problem: exerciseText });
+      var btnId = "hintBtn";
+      var boxId = "hintBox";
+      var titleId = "hintTitle";
+
+      $("generatedAnswerTitle").style.display = "none";
+      $("generatedAnswerBox").classList.remove("visible");
+      $("generatedAnswerBox").style.display = "none";
+      $("assessmentTitle").style.display = "none";
+      $("assessmentBox").classList.remove("visible");
+      $("assessmentBox").style.display = "none";
 
       $(btnId).disabled = true;
       $(titleId).style.display = "block";
@@ -1170,25 +1300,163 @@
       var studentAnswer = $("rightStudentAnswer").value.trim();
       if (!studentAnswer) { setError("Please enter your answer."); return; }
       if (!currentGeneratedAnswerRaw.trim()) { setError("The generated answer is not ready yet. Please wait a moment."); return; }
-      var assessRaw = await _submitAssessCore(studentAnswer, "rightAssessmentTitle", "rightAssessmentBox", "rightSubmitAnswerBtn", "right sidebar");
-      // Save assessment to active exercise
-      if (assessRaw && activeExerciseIndex >= 0 && activeExerciseIndex < exercises.length) {
-        exercises[activeExerciseIndex].assessment = assessRaw;
-        updateActiveExerciseState();
+
+      var prob = exercises[activeExerciseIndex];
+      if (!prob || !Array.isArray(prob.messages)) return;
+
+      $("rightSubmitAnswerBtn").disabled = true;
+      $("rightStudentAnswer").value = "";
+
+      _pushRightUserMessage(studentAnswer);
+
+      var bubbleId = "assess_" + Date.now();
+      prob.messages.push({ role: "assistant", text: "", kind: "assess", createdAt: Date.now(), bubbleId: bubbleId });
+      renderRightChat();
+      var scroll = $("rightChatScroll");
+      if (scroll) scroll.scrollTop = scroll.scrollHeight;
+
+      var assessRaw = "";
+      try {
+        logDebug("Assess request start (right sidebar chat)", {
+          exerciseLen: (currentExerciseRaw || "").length,
+          generatedLen: (currentGeneratedAnswerRaw || "").length,
+          answerLen: studentAnswer.length,
+          chatModel: getSelectedChatModel() || "(default)"
+        });
+        var response = await fetch("/rag2/assess", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(applySelectedCourse(applySelectedChatModel({
+            problem: currentExerciseRaw,
+            generated_answer: currentGeneratedAnswerRaw,
+            student_answer: studentAnswer
+          })))
+        });
+
+        if (!response.ok) {
+          var errText = await response.text();
+          throw new Error("HTTP " + response.status + "\n" + errText);
+        }
+        await readEventStream(response, function (event, data) {
+          if (event === "meta" || event === "status") return;
+          if (event === "token") {
+            assessRaw = _appendRightAssistantToken(bubbleId, data.content || "") || assessRaw;
+            if (scroll) scroll.scrollTop = scroll.scrollHeight;
+            return;
+          }
+          if (event === "error") {
+            throw new Error((data && data.message ? data.message : "Assessment stream error") + (data && data.request_id ? " [request_id=" + data.request_id + "]" : ""));
+          }
+          if (event === "done") { logDebug("Assess stream done", data); }
+        });
+
+        assessRaw = _finalizeRightAssistantBubble(bubbleId) || assessRaw;
+        typesetMath();
+        setStatus("Done.");
+        prob.assessment = assessRaw;
+        if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
+      } catch (e) {
+        logDebug("Assess request failed", { error: String(e) });
+        var failMsg = "Assessment failed: " + String(e);
+        var failEl = document.getElementById(bubbleId);
+        if (failEl) {
+          var c = failEl.querySelector(".chat-bubble-content");
+          if (c) { c.textContent = failMsg; c.classList.remove("streaming-cursor"); }
+        }
+        setError(failMsg);
+        setStatus("Error");
+      } finally {
+        $("rightSubmitAnswerBtn").disabled = false;
+        typesetMath();
       }
     }
 
     function toggleRightGeneratedAnswer() {
-      _toggleGeneratedAnswer("rightGeneratedAnswerBox", "rightGeneratedAnswerTitle", "rightShowAnswerBtn");
-      if (activeExerciseIndex >= 0 && activeExerciseIndex < exercises.length) {
-        var box = $("rightGeneratedAnswerBox");
-        exercises[activeExerciseIndex].generated_answer_shown = box.classList.contains("visible");
-        updateActiveExerciseState();
+      var prob = exercises[activeExerciseIndex];
+      if (!prob) return;
+      if (!currentGeneratedAnswerRaw.trim()) {
+        setError("The generated answer is not ready yet. Please wait a moment.");
+        return;
       }
+      prob.answer_shown = !prob.answer_shown;
+      $("rightShowAnswerBtn").textContent = prob.answer_shown ? "Hide answer" : "Show answer";
+      renderRightAnswerReveal();
+      if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
     }
 
     function toggleGeneratedAnswer() {
       _toggleGeneratedAnswer("generatedAnswerBox", "generatedAnswerTitle", "showAnswerBtn");
+    }
+
+    async function sendRightChatMessage() {
+      var textarea = $("rightStudentAnswer");
+      var text = (textarea.value || "").trim();
+      if (!text) return;
+      if (activeExerciseIndex < 0 || activeExerciseIndex >= exercises.length) return;
+      var prob = exercises[activeExerciseIndex];
+      if (!prob || !Array.isArray(prob.messages)) return;
+
+      textarea.value = "";
+      _pushRightUserMessage(text);
+
+      var bubbleId = "tutor_" + Date.now();
+      prob.messages.push({ role: "assistant", text: "", kind: "chat", createdAt: Date.now(), bubbleId: bubbleId });
+      renderRightChat();
+      var scroll = $("rightChatScroll");
+      if (scroll) scroll.scrollTop = scroll.scrollHeight;
+
+      $("rightAnswerSendBtn").disabled = true;
+      var respRaw = "";
+      try {
+        var payload = applySelectedCourse(applySelectedChatModel({
+          problem: currentExerciseRaw,
+          messages: prob.messages.slice(0, -1).map(function (m) { return { role: m.role, text: m.text }; }),
+          text: text,
+          generated_answer: currentGeneratedAnswerRaw || ""
+        }));
+        var response = await fetch("/rag2/exercise-chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        await readEventStream(response, function (event, data) {
+          if (event === "meta" || event === "status") return;
+          if (event === "token") {
+            respRaw = _appendRightAssistantToken(bubbleId, data.content || "") || respRaw;
+            if (scroll) scroll.scrollTop = scroll.scrollHeight;
+            return;
+          }
+          if (event === "error") {
+            throw new Error((data && data.message ? data.message : "Tutor stream error") + (data && data.request_id ? " [request_id=" + data.request_id + "]" : ""));
+          }
+          if (event === "done") { logDebug("Exercise chat stream done", data); }
+        });
+        respRaw = _finalizeRightAssistantBubble(bubbleId) || respRaw;
+        typesetMath();
+        // Update stored text
+        if (prob.messages.length > 0) {
+          var last = prob.messages[prob.messages.length - 1];
+          if (last.bubbleId === bubbleId) last.text = respRaw;
+        }
+        if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
+      } catch (e) {
+        logDebug("Exercise chat failed", { error: String(e) });
+        var failMsg = "Tutor failed: " + String(e);
+        var failEl = document.getElementById(bubbleId);
+        if (failEl) {
+          var c = failEl.querySelector(".chat-bubble-content");
+          if (c) { c.textContent = failMsg; c.classList.remove("streaming-cursor"); }
+        }
+        if (prob.messages.length > 0) {
+          var last2 = prob.messages[prob.messages.length - 1];
+          if (last2.bubbleId === bubbleId) last2.text = failMsg;
+        }
+        setError(failMsg);
+      } finally {
+        $("rightAnswerSendBtn").disabled = false;
+        typesetMath();
+      }
     }
 
     // Chat rendering
@@ -2117,9 +2385,13 @@
 
       $("rightSubmitAnswerBtn").addEventListener("click", submitRightAnswer);
 
+      $("rightAnswerSendBtn").addEventListener("click", sendRightChatMessage);
+
       $("rightStudentAnswer").addEventListener("keydown", function (e) {
-        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") submitRightAnswer();
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendRightChatMessage(); }
       });
+
+      $("rightHideAnswerBtn").addEventListener("click", toggleRightGeneratedAnswer);
 
       // Enter in answer field submits
       $("studentAnswer").addEventListener("keydown", function (e) {
