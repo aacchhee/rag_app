@@ -1158,7 +1158,7 @@ def assess_answer():
     return _stream_response(generate())
 
 
-@app.post("/rag2/exercise-chat")
+@app.post("/exercise-chat")
 def exercise_chat():
     data = request.get_json(force=True) or {}
     request_id = current_request_id()
