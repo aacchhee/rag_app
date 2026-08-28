@@ -775,8 +775,8 @@
       }
       // Sync active exercise in-memory state before saving
       if (activeExerciseIndex >= 0 && activeExerciseIndex < exercises.length) {
-        exercises[activeExerciseIndex].problem = currentExerciseRaw;
-        exercises[activeExerciseIndex].generated_answer = currentGeneratedAnswerRaw;
+        if (currentExerciseRaw) exercises[activeExerciseIndex].problem = currentExerciseRaw;
+        if (currentGeneratedAnswerRaw) exercises[activeExerciseIndex].generated_answer = currentGeneratedAnswerRaw;
         exercises[activeExerciseIndex].student_answer = $("rightStudentAnswer").value;
       }
       var title = conversationTitleFromHistory(chatHistory);
