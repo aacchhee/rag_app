@@ -419,13 +419,28 @@
       $("sources").innerHTML = "<div><strong>Sources</strong></div><ul>" + items + "</ul>";
     }
 
+    var _typesetInProgress = false;
+    var _typesetPending = false;
     async function typesetMath() {
       if (window.MathJax && MathJax.typesetPromise) {
         try {
+          if (_typesetInProgress) {
+            _typesetPending = true;
+            return;
+          }
+          _typesetInProgress = true;
           MathJax.startup.document.clear();
           MathJax.startup.document.updateDocument();
           await MathJax.typesetPromise();
-        } catch (e) { }
+          _typesetInProgress = false;
+          if (_typesetPending) {
+            _typesetPending = false;
+            typesetMath();
+          }
+        } catch (e) {
+          _typesetInProgress = false;
+          _typesetPending = false;
+        }
       }
     }
 
