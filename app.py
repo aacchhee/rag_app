@@ -824,22 +824,29 @@ def generate_problem():
     if error_response:
         return error_response
 
+    course = (data.get("course") or "").strip() or None
+
     if not conversation_context and not q:
         return jsonify(error="Missing 'question' or 'conversation_context'", request_id=request_id), 400
 
-    # Use conversation context for retrieval when available; otherwise fall back to the single question
-    retrieval_query = conversation_context if conversation_context else q
+    # Use conversation context for retrieval when available; otherwise fall back to the single question.
+    # For difficulty adjustments, retrieve based on the previous problem so the new exercise stays on topic.
+    if difficulty_adjustment and previous_problem:
+        retrieval_query = previous_problem
+    else:
+        retrieval_query = conversation_context if conversation_context else q
     q_emb = embed_query(retrieval_query)
-    hits = retriever.search(q_emb, top_k=RAG.TOP_K_DEFAULT, log_hits=True)
+    hits = retriever.search(q_emb, top_k=RAG.TOP_K_DEFAULT, log_hits=True, course=course)
     sources, source_blocks = render_sources(hits)
 
     app.logger.info(
-        "[req:%s] /problem q_len=%d ctx_len=%d hits=%d chat_model=%s",
+        "[req:%s] /problem q_len=%d ctx_len=%d hits=%d chat_model=%s course=%s",
         request_id,
         len(q),
         len(conversation_context),
         len(hits),
         chat_model,
+        course or "-",
     )
 
     def generate():
@@ -935,18 +942,21 @@ def calculate_answer():
     elif conversation_context:
         retrieval_query = conversation_context + "\n\n" + problem_text
 
+    course = (data.get("course") or "").strip() or None
+
     q_emb = embed_query(retrieval_query)
-    hits = retriever.search(q_emb, top_k=RAG.TOP_K_DEFAULT, log_hits=True)
+    hits = retriever.search(q_emb, top_k=RAG.TOP_K_DEFAULT, log_hits=True, course=course)
     _, source_blocks = render_sources(hits)
 
     app.logger.info(
-        "[req:%s] /calculate-answer problem_len=%d topic_len=%d ctx_len=%d hits=%d chat_model=%s",
+        "[req:%s] /calculate-answer problem_len=%d topic_len=%d ctx_len=%d hits=%d chat_model=%s course=%s",
         request_id,
         len(problem_text),
         len(topic_question),
         len(conversation_context),
         len(hits),
         chat_model,
+        course or "-",
     )
 
     def generate():
