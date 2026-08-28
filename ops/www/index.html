@@ -193,7 +193,6 @@
           <div class="answer-reveal" id="rightAnswerReveal" hidden>
             <div class="answer-reveal-header">
               <span>Answer</span>
-              <button id="rightHideAnswerBtn" class="answer-reveal-close" type="button">Hide</button>
             </div>
             <div class="answer-reveal-body" id="rightAnswerRevealBody"></div>
           </div>
@@ -940,6 +939,7 @@
         reveal.hidden = false;
         body.innerHTML = renderMarkdown(currentGeneratedAnswerRaw);
         $("rightShowAnswerBtn").textContent = "Hide answer";
+        typesetMath();
       } else {
         reveal.hidden = true;
         body.innerHTML = "";
@@ -2408,7 +2408,6 @@
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendRightChatMessage(); }
       });
 
-      $("rightHideAnswerBtn").addEventListener("click", toggleRightGeneratedAnswer);
 
       // Enter in answer field submits
       $("studentAnswer").addEventListener("keydown", function (e) {
