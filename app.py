@@ -900,7 +900,7 @@ def generate_problem():
         raw = ""
         for token in chat_completion_stream(
             [{"role": "system", "content": system_p}, {"role": "user", "content": user_p}],
-            temperature=0.5, max_tokens=2000,
+            temperature=0.5, max_tokens=4000,
             chat_model=chat_model,
         ):
             raw += token
@@ -999,7 +999,7 @@ def calculate_answer():
         raw = ""
         for token in chat_completion_stream(
             [{"role": "system", "content": system_s}, {"role": "user", "content": user_s}],
-            temperature=0.3, max_tokens=2000,
+            temperature=0.3, max_tokens=RAG.NOTES_MAX_TOKENS,
             chat_model=chat_model,
         ):
             raw += token
@@ -1076,7 +1076,7 @@ def generate_hint():
         raw = ""
         for token in chat_completion_stream(
             [{"role": "system", "content": system_h}, {"role": "user", "content": user_h}],
-            temperature=0.4, max_tokens=300,
+            temperature=0.4, max_tokens=500,
             chat_model=chat_model,
         ):
             raw += token
@@ -1158,7 +1158,7 @@ def assess_answer():
         raw = ""
         for token in chat_completion_stream(
             [{"role": "system", "content": system_a}, {"role": "user", "content": user_a}],
-            temperature=0.3, max_tokens=2000,
+            temperature=0.3, max_tokens=4000,
             chat_model=chat_model,
         ):
             raw += token
@@ -1247,7 +1247,7 @@ def exercise_chat():
         raw = ""
         for token in chat_completion_stream(
             [{"role": "system", "content": system_e}, {"role": "user", "content": user_e}],
-            temperature=0.6, max_tokens=2000,
+            temperature=0.6, max_tokens=4000,
             chat_model=chat_model,
         ):
             raw += token
