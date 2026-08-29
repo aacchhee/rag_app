@@ -1826,3 +1826,55 @@ details > summary.box-title {
   font-weight: 700;
   box-shadow: 0 1px 4px rgba(45, 50, 41, .1);
 }
+
+/* === Mobile overlay sidebars === */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 200;
+    width: min(320px, 85vw) !important;
+    flex: none;
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+
+  .sidebar.collapsed {
+    width: min(320px, 85vw) !important;
+    flex: none;
+    transform: translateX(-100%);
+    pointer-events: none;
+  }
+
+  .right-sidebar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 200;
+    width: min(320px, 85vw) !important;
+    min-width: auto !important;
+    flex: none;
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+
+  .right-sidebar.collapsed {
+    width: min(320px, 85vw) !important;
+    min-width: auto !important;
+    flex: none;
+    transform: translateX(100%);
+    pointer-events: none;
+  }
+
+  .resize-grip {
+    display: none;
+  }
+
+  .sidebar-toggle,
+  .right-sidebar-toggle {
+    z-index: 300;
+  }
+}

@@ -850,6 +850,11 @@
         toggle.style.right = "12px";
         return;
       }
+      if (window.innerWidth <= 768) {
+        toggle.style.left = "auto";
+        toggle.style.right = "12px";
+        return;
+      }
       var rect = sidebar.getBoundingClientRect();
       toggle.style.left = (rect.left - toggle.offsetWidth - 8) + "px";
       toggle.style.right = "auto";
@@ -2286,6 +2291,10 @@
         var sidebar = $("sidebar");
         var toggle = $("sidebarToggle");
         if (sidebar.classList.contains("collapsed")) {
+          toggle.style.left = "12px";
+          return;
+        }
+        if (window.innerWidth <= 768) {
           toggle.style.left = "12px";
           return;
         }
