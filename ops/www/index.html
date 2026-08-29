@@ -1734,8 +1734,19 @@
           if (found) {
             select.value = savedCourse;
             logDebug("Restored saved course", { course: savedCourse });
+            return;
           }
         }
+        // No saved preference: default to IMAx3011 if it exists
+        var defaultCourse = "IMAx3011";
+        for (var k = 0; k < select.options.length; k++) {
+          if (select.options[k].value === defaultCourse) {
+            select.value = defaultCourse;
+            logDebug("Default course selected", { course: defaultCourse });
+            return;
+          }
+        }
+        // IMAx3011 not available: leave as "All courses"
       } catch (e) {
         logDebug("Courses load failed", { error: String(e) });
       }

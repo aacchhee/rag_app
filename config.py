@@ -100,11 +100,17 @@ class Config:
 
     @classmethod
     def default_chat_model(cls) -> str:
+        # Prefer openai/gpt-oss-120b when the API lists it
+        preferred = "openai/gpt-oss-120b"
+        models = cls.allowed_chat_models()
+        if preferred in models:
+            return preferred
+
+        # Legacy env-based override
         configured_default = (cls.CHAT_MODEL or "").strip()
         if configured_default:
             return configured_default
 
-        models = cls.allowed_chat_models()
         return next(iter(models), "")
 
     @classmethod
