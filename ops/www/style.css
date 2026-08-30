@@ -1257,7 +1257,7 @@ details > summary.box-title {
 .exercise-truncated {
   position: relative;
   overflow: hidden;
-  max-height: 150px;
+  max-height: 70px;
   transition: max-height 0.35s ease;
 }
 
