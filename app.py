@@ -445,7 +445,7 @@ def ask():
         (time.perf_counter() - retrieval_started) * 1000,
     )
 
-    # 2) Pass 1: notes-only answer (must cite)
+    # 2) Pass 1: notes-only answer
     system_1 = (
         "You are a course assistant. Use ONLY the provided SOURCES from the lecture notes. "
         "Do not use outside knowledge. If the answer is not in the sources, say you don't know. "
@@ -455,7 +455,6 @@ def ask():
         " - you MUST provide one example per answer. This is mandatory, don't skip it.\n"
         " - do not provide just the summary or just the example, you need to provide both.\n"
         "Be concise: 3–6 sentences max. No preamble.\n\n"
-        "Cite sources like [S1], [S2] for every factual claim.\n\n"
         "At the end of your response, include a single line exactly in this format:\n"
         "COVERAGE: full|partial|none"
     )
@@ -465,7 +464,7 @@ def ask():
         + "\n".join(source_blocks)
         + "\nQUESTION:\n"
         + q
-        + "\n\nAnswer based only on SOURCES. Include citations. End with COVERAGE line."
+        + "\n\nAnswer based only on SOURCES. End with COVERAGE line."
     )
 
     notes_answer_raw = chat_completion(
@@ -660,7 +659,6 @@ def ask_stream():
                 "The student may refer to previous questions and answers. "
                 "Answer the NEW question, using conversation history for context.\n\n"
                 "RULES:\n"
-                "- Cite sources like [S1], [S2] for every factual claim.\n"
                 "- If the student asks a follow-up, use the conversation context.\n"
                 "- Be concise but thorough.\n"
                 "- Include at least one concrete example and one intuitive interpretation.\n"
@@ -680,7 +678,6 @@ def ask_stream():
                 " - do not provide just the summary or just the example, you need to provide both.\n"
                 " - You are allowed to be creative when giving examples, but keep them relevant and grounded in the concepts from the notes.\n"
                 "Be concise: 3–6 sentences max. No preamble.\n\n"
-                "Cite sources like [S1], [S2] for every factual claim.\n\n"
                 "At the end of your response, include a single line exactly in this format:\n"
                 "COVERAGE: full|partial|none"
             )
@@ -1223,8 +1220,7 @@ def exercise_chat():
             "  Do not produce the correct calculation for them.\n"
             "- If the student explicitly demands the full solution, refuse politely and offer a hint instead.\n\n"
             "TONE:\n"
-            "- Be encouraging, use LaTeX for math, and keep responses concise.\n"
-            "- Cite sources like [S1], [S2] when relevant."
+            "- Be encouraging, use LaTeX for math, and keep responses concise."
         )
 
         user_e = "EXERCISE CONTEXT:\n" + problem
