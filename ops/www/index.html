@@ -213,9 +213,13 @@
             </button>
           </div>
           <div class="row right-sidebar-actions">
-            <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
-            <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
-            <button id="rightHintBtn" class="hint-btn" type="button">💡 Hint</button>
+            <div class="right-sidebar-scroll">
+              <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
+              <button id="rightCheckApproachBtn" class="submit-answer-btn approach-btn" type="button">Check my approach</button>
+              <button id="rightExplainQuestionBtn" class="show-answer-btn" type="button">Explain question</button>
+              <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
+              <button id="rightHintBtn" class="hint-btn" type="button">💡 Hint</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1427,6 +1431,118 @@
       }
     }
 
+    async function explainRightQuestion() {
+      var exerciseText = currentExerciseRaw || "";
+      if (!exerciseText) return;
+
+      var prob = exercises[activeExerciseIndex];
+      if (!prob || !Array.isArray(prob.messages)) return;
+
+      _pushRightUserMessage("Explain this question");
+
+      var bubbleId = "explain_" + Date.now();
+      prob.messages.push({ role: "assistant", text: "", kind: "explain", createdAt: Date.now(), bubbleId: bubbleId });
+      renderRightChat();
+      var scroll = $("rightChatScroll");
+      if (scroll) scroll.scrollTop = scroll.scrollHeight;
+
+      $("rightExplainQuestionBtn").disabled = true;
+      var raw = "";
+      try {
+        var payload = applySelectedCourse(applySelectedChatModel({ problem: exerciseText }));
+        var response = await fetch("/rag2/explain-question", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        await readEventStream(response, function (event, data) {
+          if (event === "token") {
+            raw = _appendRightAssistantToken(bubbleId, data.content || "") || raw;
+            if (scroll) scroll.scrollTop = scroll.scrollHeight;
+            return;
+          }
+          if (event === "done") {
+            raw = _finalizeRightAssistantBubble(bubbleId) || raw;
+            typesetMath();
+          }
+        });
+        if (prob.messages.length > 0) {
+          var last = prob.messages[prob.messages.length - 1];
+          if (last.bubbleId === bubbleId) last.text = raw;
+        }
+        if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
+      } catch (err) {
+        var failMsg = "Explain failed: " + err.message;
+        var failEl = document.getElementById(bubbleId);
+        if (failEl) {
+          var c = failEl.querySelector(".chat-bubble-content");
+          if (c) { c.textContent = failMsg; c.classList.remove("streaming-cursor"); }
+        }
+        if (prob.messages.length > 0) {
+          var last2 = prob.messages[prob.messages.length - 1];
+          if (last2.bubbleId === bubbleId) last2.text = failMsg;
+        }
+      } finally {
+        $("rightExplainQuestionBtn").disabled = false;
+        typesetMath();
+      }
+    }
+
+    async function checkRightApproach() {
+      var exerciseText = currentExerciseRaw || "";
+      if (!exerciseText) return;
+
+      var studentApproach = $("rightStudentAnswer").value.trim();
+      if (!studentApproach) { setError("Please describe your approach first."); return; }
+
+      var prob = exercises[activeExerciseIndex];
+      if (!prob || !Array.isArray(prob.messages)) return;
+
+      _pushRightUserMessage("Check my approach: " + studentApproach);
+      $("rightStudentAnswer").value = "";
+
+      var bubbleId = "approach_" + Date.now();
+      prob.messages.push({ role: "assistant", text: "", kind: "approach", createdAt: Date.now(), bubbleId: bubbleId });
+      renderRightChat();
+      var scroll = $("rightChatScroll");
+      if (scroll) scroll.scrollTop = scroll.scrollHeight;
+
+      $("rightCheckApproachBtn").disabled = true;
+      var raw = "";
+      try {
+        var payload = applySelectedCourse(applySelectedChatModel({ problem: exerciseText, student_answer: studentApproach }));
+        var response = await fetch("/rag2/check-approach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        await readEventStream(response, function (event, data) {
+          if (event === "token") {
+            raw = _appendRightAssistantToken(bubbleId, data.content || "") || raw;
+            if (scroll) scroll.scrollTop = scroll.scrollHeight;
+            return;
+          }
+          if (event === "done") {
+            raw = _finalizeRightAssistantBubble(bubbleId) || raw;
+            typesetMath();
+          }
+        });
+        if (prob.messages.length > 0) {
+          var last = prob.messages[prob.messages.length - 1];
+          if (last.bubbleId === bubbleId) last.text = raw;
+        }
+        if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
+      } catch (err) {
+        var failMsg = "Approach check failed: " + err.message;
+        var failEl = document.getElementById(bubbleId);
+        if (failEl) {
+          var c = failEl.querySelector(".chat-bubble-content");
+          if (c) { c.textContent = failMsg; c.classList.remove("streaming-cursor"); }
+        }
+        if (prob.messages.length > 0) {
+          var last2 = prob.messages[prob.messages.length - 1];
+          if (last2.bubbleId === bubbleId) last2.text = failMsg;
+        }
+      } finally {
+        $("rightCheckApproachBtn").disabled = false;
+        typesetMath();
+      }
+    }
+
     function toggleRightGeneratedAnswer() {
       var prob = exercises[activeExerciseIndex];
       if (!prob) return;
@@ -2457,6 +2573,8 @@
       });
 
       $("rightSubmitAnswerBtn").addEventListener("click", submitRightAnswer);
+      $("rightCheckApproachBtn").addEventListener("click", checkRightApproach);
+      $("rightExplainQuestionBtn").addEventListener("click", explainRightQuestion);
 
       $("rightAnswerSendBtn").addEventListener("click", sendRightChatMessage);
 

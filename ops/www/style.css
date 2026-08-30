@@ -537,7 +537,7 @@ select {
 
 .right-sidebar-input .answer-input-area.visible {
   display: block;
-  padding: 12px 14px 14px;
+  padding: 12px 14px 6px;
 }
 
 .right-sidebar-input .answer-input-area label {
@@ -1499,7 +1499,7 @@ details > summary.box-title {
 
 .right-sidebar-actions {
   justify-content: flex-end;
-  margin-top: 10px;
+  margin-top: 8px;
   gap: 16px;
   flex-wrap: wrap;
   align-items: center;
@@ -1522,6 +1522,35 @@ details > summary.box-title {
   font-weight: 600;
   box-shadow: none;
   cursor: pointer;
+}
+
+/* Scrollable button strip inside right sidebar */
+.right-sidebar-scroll {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 16px;
+  align-items: center;
+  overflow-x: auto;
+  width: 100%;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.right-sidebar-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.right-sidebar-scroll::-webkit-scrollbar-track {
+  background: #eef2e9;
+  border-radius: 4px;
+}
+.right-sidebar-scroll::-webkit-scrollbar-thumb {
+  background: #aec0af;
+  border-radius: 4px;
+}
+.right-sidebar-scroll .submit-answer-btn,
+.right-sidebar-scroll .show-answer-btn,
+.right-sidebar-scroll .hint-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .right-sidebar-actions .submit-answer-btn:disabled,

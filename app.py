@@ -1206,6 +1206,138 @@ def assess_answer():
     return _stream_response(generate())
 
 
+@app.post("/explain-question")
+def explain_question():
+    data = request.get_json(force=True) or {}
+    request_id = current_request_id()
+
+    problem = (data.get("problem") or "").strip()
+    chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
+    if error_response:
+        return error_response
+
+    if not problem:
+        return jsonify(error="Missing 'problem'", request_id=request_id), 400
+
+    app.logger.info(
+        "[req:%s] /explain-question problem_len=%d chat_model=%s",
+        request_id,
+        len(problem),
+        chat_model,
+    )
+
+    def generate():
+        yield _sse("meta", {"request_id": request_id, "chat_model": chat_model})
+        yield _sse("status", {"phase": "thinking"})
+
+        system_eq = (
+            "You are a helpful tutor. A student wants to understand what a math problem is asking.\n"
+            "Break down the problem in plain language:\n"
+            "- Explain what quantity or property the student needs to find or prove.\n"
+            "- Identify the key objects, variables, or functions involved.\n"
+            "- Clarify any notation or terminology that might be confusing.\n"
+            "- Name the general topic or concept being tested, but do NOT teach the method or solve the problem.\n"
+            "- Do NOT give formulas, steps, hints, or the answer.\n\n"
+            "Output format:\n"
+            "**Explanation:**\n"
+            "(your breakdown)\n"
+        )
+
+        user_eq = (
+            "Help me understand what this problem is asking:\n\n"
+            + problem
+        )
+
+        yield _sse("status", {"phase": "generating"})
+
+        raw = ""
+        for token in chat_completion_stream(
+            [{"role": "system", "content": system_eq}, {"role": "user", "content": user_eq}],
+            temperature=0.3, max_tokens=2000,
+            chat_model=chat_model,
+        ):
+            raw += token
+            yield _sse("token", {"content": token})
+
+        app.logger.info(
+            "[req:%s] /explain-question complete raw_len=%d",
+            request_id,
+            len(raw),
+        )
+        yield _sse("done", {"request_id": request_id, "chat_model": chat_model, "ok": True})
+
+    return _stream_response(generate())
+
+
+@app.post("/check-approach")
+def check_approach():
+    data = request.get_json(force=True) or {}
+    request_id = current_request_id()
+
+    problem = (data.get("problem") or "").strip()
+    student_answer = (data.get("student_answer") or "").strip()
+    chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
+    if error_response:
+        return error_response
+
+    if not problem:
+        return jsonify(error="Missing 'problem'", request_id=request_id), 400
+    if not student_answer:
+        return jsonify(error="Missing 'student_answer'", request_id=request_id), 400
+
+    app.logger.info(
+        "[req:%s] /check-approach problem_len=%d answer_len=%d chat_model=%s",
+        request_id,
+        len(problem),
+        len(student_answer),
+        chat_model,
+    )
+
+    def generate():
+        yield _sse("meta", {"request_id": request_id, "chat_model": chat_model})
+        yield _sse("status", {"phase": "thinking"})
+
+        system_ca = (
+            "You are a helpful tutor. A student has described their approach to a math problem.\n"
+            "Evaluate their strategy and reasoning:\n"
+            "- If the approach is sound, confirm and gently reinforce why it is a good direction.\n"
+            "- If the approach has gaps or misconceptions, name the issue and suggest a correction to the strategy.\n"
+            "  Do NOT fill in the missing calculations or give the answer.\n"
+            "- If the approach is completely off, redirect them toward a more suitable strategy without solving the problem.\n"
+            "- Be encouraging and specific about the method, not the numerical result.\n"
+            "- Do NOT compute the final answer or verify whether their final number is correct.\n\n"
+            "Output format:\n"
+            "**Feedback:**\n"
+            "(your evaluation)\n"
+        )
+
+        user_ca = (
+            "PROBLEM:\n" + problem
+            + "\n\nMY APPROACH:\n" + student_answer
+            + "\n\nPlease evaluate my approach."
+        )
+
+        yield _sse("status", {"phase": "generating"})
+
+        raw = ""
+        for token in chat_completion_stream(
+            [{"role": "system", "content": system_ca}, {"role": "user", "content": user_ca}],
+            temperature=0.3, max_tokens=2000,
+            chat_model=chat_model,
+        ):
+            raw += token
+            yield _sse("token", {"content": token})
+
+        app.logger.info(
+            "[req:%s] /check-approach complete raw_len=%d",
+            request_id,
+            len(raw),
+        )
+        yield _sse("done", {"request_id": request_id, "chat_model": chat_model, "ok": True})
+
+    return _stream_response(generate())
+
+
 @app.post("/exercise-chat")
 def exercise_chat():
     data = request.get_json(force=True) or {}
