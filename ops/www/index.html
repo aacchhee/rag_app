@@ -451,10 +451,11 @@
     var currentExerciseRaw = "";  // raw exercise text from LLM (active exercise)
     var currentGeneratedAnswerRaw = ""; // hidden answer key for assessment (active exercise)
 
-    // Exercises array for chat mode: [{problem, generated_answer, student_answer, assessment}, ...]
+    // Exercises array for chat mode: [{problem, generated_answer, student_answer, assessment, hint_level}, ...]
     // Note: internal object keys keep "problem" for backward compat with stored conversations
     var exercises = [];
     var activeExerciseIndex = -1;
+    var currentHintLevel = 0; // tracks hint level for single-mode exercise
 
     var MAX_TURNS = 20;
 
@@ -727,6 +728,7 @@
       currentGeneratedAnswerRaw = "";
       exercises = [];
       activeExerciseIndex = -1;
+      currentHintLevel = 0;
       currentConvId = null;
       renderChatConversation();
       renderSidebar();
@@ -751,6 +753,7 @@
       activeExerciseIndex = -1;
       currentExerciseRaw = "";
       currentGeneratedAnswerRaw = "";
+      currentHintLevel = 0;
       currentConvId = id;
       $("welcome").style.display = "none";
       resetRightSidebarAssessmentUI();
@@ -887,6 +890,10 @@
       if (!Array.isArray(prob.messages)) {
         prob.messages = [];
       }
+      // Migrate old hint_level
+      if (typeof prob.hint_level !== "number") {
+        prob.hint_level = 0;
+      }
 
       // Render chat + answer reveal
       renderRightChat();
@@ -996,6 +1003,7 @@
         generated_answer_shown: false,
         answer_shown: false,
         messages: [],
+        hint_level: 0,
         createdAt: Date.now()
       };
       exercises.push(prob);
@@ -1040,15 +1048,25 @@
       var exerciseText = currentExerciseRaw || "";
       if (!exerciseText) return;
 
-      // Right sidebar: chat-based hint
+      // Determine next hint level
+      var nextLevel;
       if (isRight) {
         var prob = exercises[activeExerciseIndex];
         if (!prob || !Array.isArray(prob.messages)) return;
+        nextLevel = (typeof prob.hint_level === "number" ? prob.hint_level : 0) + 1;
+        if (nextLevel > 4) nextLevel = 4;
+      } else {
+        nextLevel = currentHintLevel + 1;
+        if (nextLevel > 4) nextLevel = 4;
+      }
 
+      // Right sidebar: chat-based hint
+      if (isRight) {
+        var prob = exercises[activeExerciseIndex];
         _pushRightUserMessage("Give me a hint");
 
         var bubbleId = "hint_" + Date.now();
-        prob.messages.push({ role: "assistant", text: "", kind: "hint", createdAt: Date.now(), bubbleId: bubbleId });
+        prob.messages.push({ role: "assistant", text: "", kind: "hint", hintLevel: nextLevel, createdAt: Date.now(), bubbleId: bubbleId });
         renderRightChat();
         var scroll = $("rightChatScroll");
         if (scroll) scroll.scrollTop = scroll.scrollHeight;
@@ -1056,7 +1074,7 @@
         $("rightHintBtn").disabled = true;
         var hintRaw = "";
         try {
-          var payload = applySelectedCourse(applySelectedChatModel({ problem: exerciseText }));
+          var payload = applySelectedCourse(applySelectedChatModel({ problem: exerciseText, hint_level: nextLevel }));
           var response = await fetch("/rag2/hint", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
           if (!response.ok) throw new Error("HTTP " + response.status);
           logDebug("Hint response", responseDebugInfo(response));
@@ -1071,11 +1089,13 @@
               typesetMath();
             }
           });
-          // Update stored message text
+          // Update stored message text and level
           if (prob.messages.length > 0) {
             var last = prob.messages[prob.messages.length - 1];
             if (last.bubbleId === bubbleId) last.text = hintRaw;
           }
+          prob.hint_level = nextLevel;
+          _updateHintButtonLabel($("rightHintBtn"), nextLevel);
           if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
         } catch (err) {
           var failMsg = "Hint failed: " + err.message;
@@ -1095,8 +1115,8 @@
         return;
       }
 
-      // Single mode (center panel) unchanged
-      var payload = applySelectedChatModel({ problem: exerciseText });
+      // Single mode (center panel)
+      var payload = applySelectedChatModel({ problem: exerciseText, hint_level: nextLevel });
       var btnId = "hintBtn";
       var boxId = "hintBox";
       var titleId = "hintTitle";
@@ -1132,10 +1152,24 @@
             typesetMath();
           }
         });
+        currentHintLevel = nextLevel;
+        _updateHintButtonLabel($("hintBtn"), nextLevel);
       } catch (err) {
         $(boxId).innerText = "Hint failed: " + err.message;
       } finally {
         $(btnId).disabled = false;
+      }
+    }
+
+    function _updateHintButtonLabel(btn, level) {
+      if (!btn) return;
+      var prefix = "💡 Hint";
+      if (level <= 0) {
+        btn.textContent = prefix;
+      } else if (level >= 4) {
+        btn.textContent = prefix + " (max)";
+      } else {
+        btn.textContent = prefix + " (" + level + "/4)";
       }
     }
 
@@ -1859,6 +1893,7 @@
       setError("");
       currentExerciseRaw = "";
       currentGeneratedAnswerRaw = "";
+      currentHintLevel = 0;
 
       if (isChatMode) {
         resetRightSidebarAssessmentUI();
@@ -2032,6 +2067,7 @@
       rawExtra = "";
       currentExerciseRaw = "";
       currentGeneratedAnswerRaw = "";
+      currentHintLevel = 0;
       resetGeneratedAnswerUI();
       resetAssessmentUI();
 

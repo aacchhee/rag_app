@@ -1023,13 +1023,23 @@ def calculate_answer():
     return _stream_response(generate())
 
 
-# Hint endpoint
+# Hint endpoint (progressive 4-level hint layering)
 @app.post("/hint")
 def generate_hint():
     data = request.get_json(force=True) or {}
     request_id = current_request_id()
 
     problem = (data.get("problem") or "").strip()
+    raw_level = data.get("hint_level")
+    try:
+        hint_level = int(raw_level) if raw_level is not None else 1
+    except (TypeError, ValueError):
+        hint_level = 1
+    if hint_level < 1:
+        hint_level = 1
+    if hint_level > 4:
+        hint_level = 4
+
     chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
     if error_response:
         return error_response
@@ -1038,53 +1048,82 @@ def generate_hint():
         return jsonify(error="Missing 'problem'", request_id=request_id), 400
 
     app.logger.info(
-        "[req:%s] /hint problem_len=%d chat_model=%s",
+        "[req:%s] /hint problem_len=%d hint_level=%d chat_model=%s",
         request_id,
         len(problem),
+        hint_level,
         chat_model,
     )
 
-    def generate():
-        yield _sse("meta", {"request_id": request_id, "chat_model": chat_model})
-        yield _sse("status", {"phase": "thinking"})
-
-        system_h = (
+    # Progressive hint prompts inspired by Erasmus-CTM/math-exercise layering
+    _HINT_PROMPTS = {
+        1: (
             "You are a helpful tutor. A student is stuck on a math problem.\n"
-            "Give them exactly ONE small hint about the very next step or concept they need.\n"
-            "Do NOT solve the problem.\n"
-            "Do NOT give the answer or reveal the full method.\n"
-            "Do NOT compute any intermediate result using the exercise's numbers or variables.\n"
-            "Use a generic example or state the idea in general terms if needed, "
-            "but never apply it directly to the problem at hand.\n"
-            "Just nudge the student toward the correct approach.\n\n"
+            "Write one or two natural sentences. Briefly acknowledge any genuine progress the student may have made, "
+            "then ask exactly ONE guiding question that helps them notice the next useful concept, definition, or relationship.\n"
+            "Do NOT give a formula, method, decomposition, intermediate value, or answer.\n\n"
             "Output format:\n"
             "**Hint:**\n"
-            "(one sentence hint)\n"
-        )
+            "(your guiding question)\n"
+        ),
+        2: (
+            "You are a helpful tutor. A student is stuck on a math problem.\n"
+            "Give a short conceptual nudge in one or two natural sentences. You may name a broad strategy or principle, "
+            "but do NOT apply it to the exercise's numbers or variables.\n"
+            "Do NOT use headings, lists, checklists, formulas, calculations, substitutions, intermediate values, or the answer.\n\n"
+            "Output format:\n"
+            "**Hint:**\n"
+            "(your conceptual nudge)\n"
+        ),
+        3: (
+            "You are a helpful tutor. A student is stuck on a math problem.\n"
+            "Begin directly with the general mathematical procedure and explain it in at most three concise steps. "
+            "You may state a general formula, but you must stop BEFORE the first task-specific substitution or calculation.\n"
+            "Do NOT compute any exponent, mantissa, field value, intermediate result, or requested answer.\n\n"
+            "Output format:\n"
+            "**Hint:**\n"
+            "1. ...\n"
+            "2. ...\n"
+            "3. ... (optional)\n"
+        ),
+        4: (
+            "You are a helpful tutor. A student is still stuck after three hints.\n"
+            "Provide a concise complete worked solution with substitutions, calculations, and the final answer.\n"
+            "Be clear and pedagogical, but do not add extra commentary beyond what is needed to solve the exercise.\n\n"
+            "Output format:\n"
+            "**Hint:**\n"
+            "(full worked solution)\n"
+        ),
+    }
 
-        user_h = (
-            "I am stuck on this problem:\n\n"
-            + problem
-            + "\n\nGive me one hint."
-        )
+    system_h = _HINT_PROMPTS[hint_level]
+    user_h = (
+        "I am stuck on this problem:\n\n"
+        + problem
+        + "\n\nGive me hint level " + str(hint_level) + "."
+    )
 
+    def generate():
+        yield _sse("meta", {"request_id": request_id, "chat_model": chat_model, "hint_level": hint_level})
+        yield _sse("status", {"phase": "thinking"})
         yield _sse("status", {"phase": "generating"})
 
         raw = ""
         for token in chat_completion_stream(
             [{"role": "system", "content": system_h}, {"role": "user", "content": user_h}],
-            temperature=0.4, max_tokens=500,
+            temperature=0.4, max_tokens=2000,
             chat_model=chat_model,
         ):
             raw += token
             yield _sse("token", {"content": token})
 
         app.logger.info(
-            "[req:%s] /hint complete raw_len=%d",
+            "[req:%s] /hint complete raw_len=%d hint_level=%d",
             request_id,
             len(raw),
+            hint_level,
         )
-        yield _sse("done", {"request_id": request_id, "chat_model": chat_model, "ok": True})
+        yield _sse("done", {"request_id": request_id, "chat_model": chat_model, "hint_level": hint_level, "ok": True})
 
     return _stream_response(generate())
 
