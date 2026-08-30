@@ -625,7 +625,15 @@ def ask_stream():
         yield _sse("status", {"phase": "thinking"})
 
         retrieval_started = time.perf_counter()
-        q_emb = embed_query(q)
+        if chat_mode and history:
+            # Anchor vague follow-ups to the conversation topic.
+            # Using the previous question + current question keeps
+            # vector search from drifting to unrelated source chunks.
+            last_q = history[-1].get("question", "")
+            retrieval_query = f"{last_q}\n{q}" if last_q else q
+        else:
+            retrieval_query = q
+        q_emb = embed_query(retrieval_query)
         hits = retriever.search(q_emb, top_k=top_k, log_hits=True, course=course)
         sources, source_blocks = render_sources(hits)
         retrieval_coverage = detect_coverage(hits)
