@@ -14,15 +14,15 @@ def _env_str(name: str, default: str) -> str:
 
 
 # Retrieval
-TOP_K_DEFAULT = _env_int("RAG_TOP_K_DEFAULT", 3)
-MAX_CHARS_PER_CHUNK = _env_int("RAG_MAX_CHARS_PER_CHUNK", 1500)
+TOP_K_DEFAULT = _env_int("RAG_TOP_K_DEFAULT", 6)
+MAX_CHARS_PER_CHUNK = _env_int("RAG_MAX_CHARS_PER_CHUNK", 2000)
 
 # Coverage heuristic
 MIN_BEST_CHUNK_CHARS_FOR_FULL = _env_int("RAG_MIN_BEST_CHUNK_CHARS_FOR_FULL", 120)
 
 # Pass 1 (notes) generation controls
 NOTES_TEMPERATURE = _env_float("RAG_NOTES_TEMPERATURE", 0.2)
-NOTES_MAX_TOKENS = _env_int("RAG_NOTES_MAX_TOKENS", 6000)
+NOTES_MAX_TOKENS = _env_int("RAG_NOTES_MAX_TOKENS", 8000)
 
 # Pass 2 (extra) generation controls
 EXTRA_TEMPERATURE = _env_float("RAG_EXTRA_TEMPERATURE", 0.5)
