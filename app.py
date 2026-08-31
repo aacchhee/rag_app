@@ -696,7 +696,7 @@ def ask_stream():
         user_1 = (
             "SOURCES:\n" + "\n".join(source_blocks)
             + "\nQUESTION:\n" + q
-            + "\n\nAnswer based only on SOURCES. Include citations. End with COVERAGE line."
+            + "\n\nAnswer based only on SOURCES. End with COVERAGE line."
         )
 
         notes_tokens = 0
