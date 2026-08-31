@@ -1800,6 +1800,44 @@ details > summary.box-title {
   transform: translateY(-1px);
 }
 
+/* Answer bubble inside exercise chat */
+.chat-bubble.assistant.answer-bubble .chat-bubble-content {
+  background: var(--task-bg);
+  border: 1px solid var(--task-line);
+  border-radius: 11px;
+  padding: 14px 16px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: #41483e;
+}
+
+.answer-bubble-content {
+  margin-top: 8px;
+}
+
+.answer-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--task-line);
+  border-radius: 8px;
+  background: var(--task-bg);
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s;
+  margin-top: 4px;
+}
+
+.answer-toggle-btn:hover {
+  background: var(--green);
+  color: white;
+  border-color: var(--green);
+}
+
 .exercise-card-actions {
   display: flex;
   flex-direction: column;

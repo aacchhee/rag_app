@@ -188,14 +188,6 @@
 
           <!-- Chat scroll area -->
           <div class="right-chat-scroll" id="rightChatScroll"></div>
-
-          <!-- Answer reveal (toggleable, outside chat flow) -->
-          <div class="answer-reveal" id="rightAnswerReveal" hidden>
-            <div class="answer-reveal-header">
-              <span>Answer</span>
-            </div>
-            <div class="answer-reveal-body" id="rightAnswerRevealBody"></div>
-          </div>
         </div>
       </div>
 
@@ -217,7 +209,7 @@
               <button id="rightSubmitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
               <button id="rightCheckApproachBtn" class="submit-answer-btn approach-btn" type="button">Check my approach</button>
               <button id="rightExplainQuestionBtn" class="show-answer-btn" type="button">Explain question</button>
-              <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
+              <button id="rightShowAnswerBtn" class="show-answer-btn" type="button" disabled>Give answer</button>
               <button id="rightHintBtn" class="hint-btn" type="button">💡 Hint</button>
             </div>
           </div>
@@ -908,9 +900,8 @@
         prob.hint_level = 0;
       }
 
-      // Render chat + answer reveal
+      // Render chat (answers are now inside chat as bubbles)
       renderRightChat();
-      renderRightAnswerReveal();
 
       $("rightShowAnswerBtn").disabled = !currentGeneratedAnswerRaw.trim();
 
@@ -930,12 +921,24 @@
       }
 
       var html = "";
-      prob.messages.forEach(function (msg) {
+      prob.messages.forEach(function (msg, idx) {
         if (msg.role === "user") {
           html += '<div class="chat-bubble user">';
           html += '<div class="chat-bubble-content">' + escapeHtml(msg.text) + '</div>';
           html += '<div class="message-meta">You</div>';
           html += '</div>';
+        } else if (msg.role === "assistant" && msg.kind === "answer") {
+          var isVisible = msg.answerVisible !== false;
+          html += '<div class="chat-bubble assistant answer-bubble">';
+          html += '<div class="assistant-row">';
+          html += '<div class="assistant-avatar" aria-hidden="true">RAG</div>';
+          html += '<div class="assistant-body">';
+          html += '<div class="assistant-label">Tutor <span>&middot;</span> <small>answer</small></div>';
+          html += '<button class="answer-toggle-btn" type="button" data-msg-idx="' + idx + '">' + (isVisible ? "Hide answer" : "Show answer") + '</button>';
+          if (isVisible) {
+            html += '<div class="chat-bubble-content answer-bubble-content" data-raw="' + escapeHtml(msg.text || "") + '">' + renderMarkdown(msg.text || "") + '</div>';
+          }
+          html += '</div></div></div>';
         } else if (msg.role === "assistant") {
           var bubbleAttrs = msg.bubbleId ? ' id="' + msg.bubbleId + '"' : '';
           var md = msg.text ? renderMarkdown(msg.text) : '<div class="thinking"><div class="thinking-dots"><span></span><span></span><span></span></div> Thinking…</div>';
@@ -954,22 +957,18 @@
       typesetMath();
     }
 
-    function renderRightAnswerReveal() {
-      var reveal = $("rightAnswerReveal");
-      var body = $("rightAnswerRevealBody");
+    function _pushRightAnswerBubble(text) {
       var prob = exercises[activeExerciseIndex];
-      if (!reveal || !body || !prob) return;
-
-      if (prob.answer_shown && currentGeneratedAnswerRaw.trim()) {
-        reveal.hidden = false;
-        body.innerHTML = renderMarkdown(currentGeneratedAnswerRaw);
-        $("rightShowAnswerBtn").textContent = "Hide answer";
-        typesetMath();
-      } else {
-        reveal.hidden = true;
-        body.innerHTML = "";
-        $("rightShowAnswerBtn").textContent = "Show answer";
-      }
+      if (!prob || !Array.isArray(prob.messages)) return;
+      prob.messages.push({
+        role: "assistant",
+        text: text || "",
+        kind: "answer",
+        answerVisible: true,
+        createdAt: Date.now()
+      });
+      renderRightChat();
+      if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
     }
 
     function addRightMessage(text, role, kind) {
@@ -1572,15 +1571,20 @@
     }
 
     function toggleRightGeneratedAnswer() {
-      var prob = exercises[activeExerciseIndex];
-      if (!prob) return;
       if (!currentGeneratedAnswerRaw.trim()) {
         setError("The generated answer is not ready yet. Please wait a moment.");
         return;
       }
-      prob.answer_shown = !prob.answer_shown;
-      $("rightShowAnswerBtn").textContent = prob.answer_shown ? "Hide answer" : "Show answer";
-      renderRightAnswerReveal();
+      _pushRightAnswerBubble(currentGeneratedAnswerRaw);
+    }
+
+    function toggleRightAnswerBubble(index) {
+      var prob = exercises[activeExerciseIndex];
+      if (!prob || !Array.isArray(prob.messages)) return;
+      var msg = prob.messages[index];
+      if (!msg || msg.kind !== "answer") return;
+      msg.answerVisible = !msg.answerVisible;
+      renderRightChat();
       if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
     }
 
@@ -2639,6 +2643,15 @@
         activeExerciseIndex = idx;
         renderActiveExercise();
         openRightSidebar();
+      });
+
+      // Toggle show/hide inside answer bubbles
+      document.addEventListener("click", function (e) {
+        var btn = e.target.closest(".answer-toggle-btn");
+        if (!btn) return;
+        var msgIdx = parseInt(btn.getAttribute("data-msg-idx"), 10);
+        if (isNaN(msgIdx)) return;
+        toggleRightAnswerBubble(msgIdx);
       });
 
       // Adjust difficulty / same from exercise bubbles
