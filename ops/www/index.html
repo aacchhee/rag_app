@@ -998,6 +998,25 @@
       }
     }
 
+    function _isActiveExerciseEngaged() {
+      if (!isChatMode) {
+        if (currentHintLevel > 0) return true;
+        if ($("assessmentBox").classList.contains("visible")) return true;
+        if ($("generatedAnswerBox").classList.contains("visible")) return true;
+        if (($("studentAnswer").value || "").trim()) return true;
+        return false;
+      }
+      if (activeExerciseIndex < 0 || activeExerciseIndex >= exercises.length) return false;
+      var prob = exercises[activeExerciseIndex];
+      if (!prob) return false;
+      if (prob.messages && prob.messages.length > 0) return true;
+      if ((prob.hint_level || 0) > 0) return true;
+      if (prob.assessment) return true;
+      if (prob.answer_shown) return true;
+      if ((prob.student_answer || "").trim()) return true;
+      return false;
+    }
+
     function updateActiveExerciseState() {
       if (activeExerciseIndex < 0 || activeExerciseIndex >= exercises.length) return;
       var prob = exercises[activeExerciseIndex];
@@ -2055,6 +2074,8 @@
       currentGeneratedAnswerRaw = "";
       currentHintLevel = 0;
 
+      var shouldReplace = difficultyAdjustment && difficultyAdjustment !== "" && !_isActiveExerciseEngaged();
+
       if (isChatMode) {
         resetRightSidebarAssessmentUI();
         $("rightSidebarWelcome").style.display = "none";
@@ -2186,7 +2207,20 @@
 
         if (isChatMode) {
           $("rightAnswerInputArea").classList.add("visible");
-          addExercise(currentExerciseRaw); // saves to exercises array + localStorage
+          if (shouldReplace && activeExerciseIndex >= 0 && activeExerciseIndex < exercises.length) {
+            var prob = exercises[activeExerciseIndex];
+            prob.problem = currentExerciseRaw;
+            prob.generated_answer = "";
+            prob.student_answer = "";
+            prob.assessment = "";
+            prob.generated_answer_shown = false;
+            prob.answer_shown = false;
+            prob.messages = [];
+            prob.hint_level = 0;
+            renderActiveExercise();
+          } else {
+            addExercise(currentExerciseRaw);
+          }
           await calculateRightExerciseAnswer();
         } else {
           $("answerInputArea").classList.add("visible");
