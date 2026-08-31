@@ -463,6 +463,9 @@
 
     var MAX_TURNS = 20;
 
+    // Course locking per conversation: once a chat starts, its course is fixed.
+    var currentConvLockedCourse = null;
+
     // --- User preferences (localStorage) ---
     var USER_PREFS_KEY = "rag_user_prefs";
 
@@ -494,9 +497,10 @@
       } catch (e) { return []; }
     }
 
-    function saveConversation(id, title, history, _exercises) {
+    function saveConversation(id, title, history, _exercises, _course) {
       try {
-        var entry = { id: id, title: title, updated: Date.now(), history: history, exercises: _exercises || [] };
+        var locked = _course !== undefined ? _course : currentConvLockedCourse;
+        var entry = { id: id, title: title, updated: Date.now(), history: history, exercises: _exercises || [], course: locked || null };
         localStorage.setItem(_convKey(id), JSON.stringify(entry));
         var ids = listConversationIds();
         if (ids.indexOf(id) === -1) {
@@ -706,7 +710,8 @@
           title: (data.title || "Imported conversation"),
           updated: Date.now(),
           history: data.history,
-          exercises: Array.isArray(data.exercises) ? data.exercises : (Array.isArray(data.problems) ? data.problems : [])
+          exercises: Array.isArray(data.exercises) ? data.exercises : (Array.isArray(data.problems) ? data.problems : []),
+          course: data.course || null
         };
         try {
           localStorage.setItem(_convKey(newId), JSON.stringify(entry));
@@ -734,6 +739,8 @@
       activeExerciseIndex = -1;
       currentHintLevel = 0;
       currentConvId = null;
+      currentConvLockedCourse = null;
+      _syncCourseSelectLock();
       renderChatConversation();
       renderSidebar();
       resetRightSidebarExerciseUI();
@@ -759,6 +766,8 @@
       currentGeneratedAnswerRaw = "";
       currentHintLevel = 0;
       currentConvId = id;
+      currentConvLockedCourse = conv.course || null;
+      _syncCourseSelectLock();
       $("welcome").style.display = "none";
       resetRightSidebarAssessmentUI();
       if (exercises.length > 0) {
@@ -786,7 +795,7 @@
         exercises[activeExerciseIndex].student_answer = $("rightStudentAnswer").value;
       }
       var title = conversationTitleFromHistory(chatHistory);
-      saveConversation(currentConvId, title, chatHistory, exercises);
+      saveConversation(currentConvId, title, chatHistory, exercises, currentConvLockedCourse);
       renderSidebar();
     }
 
@@ -1871,34 +1880,10 @@
           opt.textContent = names[i];
           select.appendChild(opt);
         }
-        var prefs = getUserPrefs();
-        var savedCourse = String(prefs.course || "").trim();
-        if (savedCourse) {
-          var found = false;
-          for (var j = 0; j < select.options.length; j++) {
-            if (select.options[j].value === savedCourse) {
-              found = true;
-              break;
-            }
-          }
-          if (found) {
-            select.value = savedCourse;
-            logDebug("Restored saved course", { course: savedCourse });
-            return;
-          }
-        }
-        // No saved preference: default to IMAx3011 if it exists
-        var defaultCourse = "IMAx3011";
-        for (var k = 0; k < select.options.length; k++) {
-          if (select.options[k].value === defaultCourse) {
-            select.value = defaultCourse;
-            logDebug("Default course selected", { course: defaultCourse });
-            return;
-          }
-        }
-        // IMAx3011 not available: leave as "All courses"
       } catch (e) {
         logDebug("Courses load failed", { error: String(e) });
+      } finally {
+        _syncCourseSelectLock();
       }
     }
 
@@ -1909,11 +1894,70 @@
     }
 
     function applySelectedCourse(payload) {
-      var course = getSelectedCourse();
+      var course = currentConvLockedCourse || getSelectedCourse();
       if (course) {
         payload.course = course;
       }
       return payload;
+    }
+
+    function _syncCourseSelectLock() {
+      var select = $("courseSelect");
+      if (!select) return;
+      if (currentConvLockedCourse) {
+        select.value = currentConvLockedCourse;
+        select.disabled = true;
+        select.title = "Course locked for this conversation: " + currentConvLockedCourse;
+      } else {
+        select.disabled = false;
+        select.title = "";
+        // Restore any saved user preference if it matches an available option
+        var prefs = getUserPrefs();
+        var savedCourse = String(prefs.course || "").trim();
+        if (savedCourse) {
+          for (var i = 0; i < select.options.length; i++) {
+            if (select.options[i].value === savedCourse) {
+              select.value = savedCourse;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    function _lockCourseForCurrentConversation() {
+      if (currentConvLockedCourse) return; // already locked
+      var selectedCourse = getSelectedCourse();
+      if (selectedCourse) {
+        currentConvLockedCourse = selectedCourse;
+      } else {
+        // If no course explicitly selected and IMAx3011 exists, lock to it by default
+        var select = $("courseSelect");
+        var imaxOption = null;
+        for (var i = 0; i < select.options.length; i++) {
+          if (select.options[i].value === "IMAx3011") {
+            imaxOption = select.options[i];
+            break;
+          }
+        }
+        if (imaxOption) {
+          currentConvLockedCourse = "IMAx3011";
+          select.value = "IMAx3011";
+        }
+      }
+      if (currentConvLockedCourse) {
+        _syncCourseSelectLock();
+        // Persist immediately if a conversation already exists
+        if (currentConvId) {
+          var conv = loadConversation(currentConvId);
+          if (conv) {
+            conv.course = currentConvLockedCourse;
+            try {
+              localStorage.setItem(_convKey(currentConvId), JSON.stringify(conv));
+            } catch (e) { }
+          }
+        }
+      }
     }
 
     async function loadChatModels() {
@@ -2206,6 +2250,11 @@
       if (isChatMode && chatHistory.length >= MAX_TURNS) {
         setError("Conversation limit reached (" + MAX_TURNS + " turns). Click 'New conversation' to start fresh.");
         return;
+      }
+
+      // Lock course on first turn if not already locked
+      if (!currentConvLockedCourse) {
+        _lockCourseForCurrentConversation();
       }
 
       var payload = applySelectedCourse(applySelectedChatModel({
