@@ -1801,41 +1801,55 @@ details > summary.box-title {
 }
 
 /* Answer bubble inside exercise chat */
-.chat-bubble.assistant.answer-bubble .chat-bubble-content {
-  background: var(--task-bg);
-  border: 1px solid var(--task-line);
-  border-radius: 11px;
-  padding: 14px 16px;
-  font-size: 15px;
-  line-height: 1.65;
-  color: #41483e;
+.answer-bubble-content {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px 18px 18px 18px;
+  padding: 10px 16px 14px;
+  font-size: 16px;
+  line-height: 1.72;
+  color: var(--text);
 }
 
-.answer-bubble-content {
-  margin-top: 8px;
+.answer-bubble-content .answer-bubble-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.answer-bubble-content .answer-bubble-header span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--green);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .answer-toggle-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 12px;
-  border: 1px solid var(--task-line);
-  border-radius: 8px;
-  background: var(--task-bg);
+  justify-content: center;
+  min-height: 0;
+  height: auto;
+  padding: 7px 14px;
+  border: 1px solid #aec0af;
+  border-radius: 9px;
+  background: var(--surface);
   color: var(--green);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: 0.2s;
-  margin-top: 4px;
 }
 
 .answer-toggle-btn:hover {
-  background: var(--green);
-  color: white;
-  border-color: var(--green);
+  background: var(--green-pale);
+  border-color: #aec0af;
+  transform: none;
+  color: var(--green);
 }
 
 .exercise-card-actions {

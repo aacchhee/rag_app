@@ -934,10 +934,15 @@
           html += '<div class="assistant-avatar" aria-hidden="true">RAG</div>';
           html += '<div class="assistant-body">';
           html += '<div class="assistant-label">Tutor <span>&middot;</span> <small>answer</small></div>';
-          html += '<button class="answer-toggle-btn" type="button" data-msg-idx="' + idx + '">' + (isVisible ? "Hide answer" : "Show answer") + '</button>';
+          html += '<div class="chat-bubble-content answer-bubble-content" data-raw="' + escapeHtml(msg.text || "") + '">';
+          html += '<div class="answer-bubble-header">';
+          html += '<span>Answer:</span>';
+          html += '<button class="answer-toggle-btn" type="button" data-msg-idx="' + idx + '">' + (isVisible ? "Hide" : "Show") + '</button>';
+          html += '</div>';
           if (isVisible) {
-            html += '<div class="chat-bubble-content answer-bubble-content" data-raw="' + escapeHtml(msg.text || "") + '">' + renderMarkdown(msg.text || "") + '</div>';
+            html += renderMarkdown(msg.text || "");
           }
+          html += '</div>';
           html += '</div></div></div>';
         } else if (msg.role === "assistant") {
           var bubbleAttrs = msg.bubbleId ? ' id="' + msg.bubbleId + '"' : '';
