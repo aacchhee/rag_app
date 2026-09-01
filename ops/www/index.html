@@ -1897,11 +1897,18 @@
       return String(select.value || "").trim();
     }
 
+    function getSelectedLanguage() {
+      var select = $("settingsLanguage");
+      if (!select) return "en";
+      return String(select.value || "en").trim();
+    }
+
     function applySelectedChatModel(payload) {
       var selectedChatModel = getSelectedChatModel();
       if (selectedChatModel) {
         payload.chat_model = selectedChatModel;
       }
+      payload.language = getSelectedLanguage();
       return payload;
     }
 
@@ -2583,7 +2590,7 @@
 
       $("settingsLanguage").addEventListener("change", function () {
         setUserPref("language", $("settingsLanguage").value);
-        logDebug("Language setting changed", { value: $("settingsLanguage").value });
+        logDebug("Model language setting changed", { value: $("settingsLanguage").value });
       });
 
       var settingsNavItems = document.querySelectorAll(".modal-nav-item");
@@ -2808,10 +2815,13 @@
           </div>
           <div class="settings-separator"></div>
           <div class="settings-row">
-            <span class="settings-label">Language</span>
+            <span class="settings-label">Model Language</span>
             <select id="settingsLanguage" class="settings-select">
               <option value="en" selected>English</option>
               <option value="no">Norsk</option>
+              <option value="de">Deutsch</option>
+              <option value="da">Dansk</option>
+              <option value="sv">Svenska</option>
             </select>
           </div>
         </div>

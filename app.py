@@ -15,6 +15,7 @@ from log_utils import current_request_id, preview_text
 from rag.retriever import Retriever
 from rag.llm import chat_completion, chat_completion_stream
 from rag import settings as RAG
+from prompts import get_prompt
 
 app = Flask(__name__)
 
@@ -118,6 +119,16 @@ def _resolve_request_chat_model(data: dict, *, request_id: str):
         return None, (jsonify(error=str(exc), request_id=request_id), 400)
     except RuntimeError as exc:
         return None, (jsonify(error=str(exc), request_id=request_id), 500)
+
+
+_ALLOWED_LANGS = {"en", "no", "de", "da", "sv"}
+
+
+def _resolve_lang(data: dict) -> str:
+    lang = (data.get("language") or "en").strip().lower()
+    if lang in _ALLOWED_LANGS:
+        return lang
+    return "en"
 
 
 _configure_logging(app)
@@ -385,6 +396,7 @@ def diagnose_llm():
 @app.post("/ask")
 def ask():
     data = request.get_json(force=True) or {}
+    lang = _resolve_lang(data)
 
     q = (data.get("question") or "").strip()
     include_extra = bool(data.get("include_extra", RAG.INCLUDE_EXTRA_DEFAULT))
@@ -446,19 +458,7 @@ def ask():
     )
 
     # 2) Pass 1: notes-only answer
-    system_1 = (
-        "You are a course assistant. Use ONLY the provided SOURCES from the lecture notes. "
-        "Do not use outside knowledge. If the answer is not in the sources, say you don't know. "
-        "Write a clear explanation suitable for a student.\n"
-        " Include at least one concrete example and one intuitive interpretation. Use LaTeX for formulas.\n"
-        " RULES:\n"
-        " - you MUST provide one example per answer. This is mandatory, don't skip it.\n"
-        " - do not provide just the summary or just the example, you need to provide both.\n"
-        "Be concise: 3–6 sentences max. No preamble.\n\n"
-        "Always reply in the same language the user is writing in.\n\n"
-        "At the end of your response, include a single line exactly in this format:\n"
-        "COVERAGE: full|partial|none"
-    )
+    system_1 = get_prompt("answer_notes", lang)
 
     user_1 = (
         "SOURCES:\n"
@@ -503,15 +503,7 @@ def ask():
     )
 
     if do_extra:
-        system_2 = (
-            "You are a helpful tutor. Add extra context NOT necessarily from the notes. "
-            "Do NOT contradict the notes-based answer. If you add facts not present in the notes, "
-            "label them clearly as general context.\n\n"
-            "Output format (follow exactly):\n"
-            "Extra context (not from notes):\n"
-            "- 3–6 bullet points of intuition/examples\n"
-            "- If relevant, include a short worked example\n"
-        )
+        system_2 = get_prompt("extra", lang)
         user_2 = (
             "Question:\n" + q
             + "\n\nNotes-based answer (authoritative for course-specific claims):\n" + notes_answer
@@ -557,6 +549,7 @@ def ask_stream():
 
     q = (data.get("question") or "").strip()
     include_extra = bool(data.get("include_extra", RAG.INCLUDE_EXTRA_DEFAULT))
+    lang = _resolve_lang(data)
     extra_mode = (data.get("extra_mode") or RAG.EXTRA_MODE_DEFAULT).lower()
     chat_mode = bool(data.get("chat_mode", False))
     history = data.get("history", [])
@@ -658,40 +651,9 @@ def ask_stream():
         # Build system prompt
         if chat_mode and history:
             history_block = _build_chat_history_block(history)
-            system_1 = (
-                "You are a course assistant having a conversation with a student. "
-                "Use ONLY the provided SOURCES from the lecture notes. "
-                "Do not use outside knowledge. If the answer is not in the sources, say you don't know.\n"
-                "Write a clear explanation suitable for a student. "
-                "Use LaTeX for formulas.\n\n"
-                "You have access to the previous conversation for context. "
-                "The student may refer to previous questions and answers. "
-                "Answer the NEW question, using conversation history for context.\n\n"
-                "RULES:\n"
-                "- If the student asks a follow-up, use the conversation context.\n"
-                "- Be concise but thorough.\n"
-                "- Include at least one concrete example and one intuitive interpretation.\n"
-                "- You are allowed to be creative when giving examples, but keep them relevant and grounded in the concepts from the notes.\n\n"
-                "Always reply in the same language the user is writing in.\n\n"
-                + history_block + "\n"
-                "At the end of your response, include a single line exactly in this format:\n"
-                "COVERAGE: full|partial|none"
-            )
+            system_1 = get_prompt("answer_notes_chat", lang).format(history_block=history_block)
         else:
-            system_1 = (
-                "You are a course assistant. Use ONLY the provided SOURCES from the lecture notes. "
-                "Do not use outside knowledge. If the answer is not in the sources, say you don't know. "
-                "Write a clear explanation suitable for a student.\n"
-                " Include at least one concrete example and one intuitive interpretation. Use LaTeX for formulas.\n"
-                " RULES:\n"
-                " - you MUST provide one example per answer. This is mandatory, don't skip it.\n"
-                " - do not provide just the summary or just the example, you need to provide both.\n"
-                " - You are allowed to be creative when giving examples, but keep them relevant and grounded in the concepts from the notes.\n"
-                "Be concise: 3–6 sentences max. No preamble.\n\n"
-                "Always reply in the same language the user is writing in.\n\n"
-                "At the end of your response, include a single line exactly in this format:\n"
-                "COVERAGE: full|partial|none"
-            )
+            system_1 = get_prompt("answer_notes", lang)
 
         user_1 = (
             "SOURCES:\n" + "\n".join(source_blocks)
@@ -753,16 +715,7 @@ def ask_stream():
             if do_extra:
                 yield _sse("status", {"phase": "extra"})
 
-                system_2 = (
-                    "You are a helpful tutor. Add extra context NOT necessarily from the notes. "
-                    "Do NOT contradict the notes-based answer. If you add facts not present in the notes, "
-                    "label them clearly as general context.\n\n"
-                    "Always reply in the same language the user is writing in.\n\n"
-                    "Output format (follow exactly):\n"
-                    "Extra context (not from notes):\n"
-                    "- 3–6 bullet points of intuition/examples\n"
-                    "- If relevant, include a short worked example\n"
-                )
+                system_2 = get_prompt("extra", lang)
                 user_2 = (
                     "Question:\n" + q
                     + "\n\nNotes-based answer (authoritative for course-specific claims):\n" + notes_answer
@@ -819,6 +772,7 @@ def ask_stream():
 @app.post("/problem")
 def generate_problem():
     data = request.get_json(force=True) or {}
+    lang = _resolve_lang(data)
     request_id = current_request_id()
 
     # Support both single-question mode and chat-mode (full conversation context)
@@ -865,21 +819,7 @@ def generate_problem():
         yield _sse("meta", {"request_id": request_id, "chat_model": chat_model})
         yield _sse("status", {"phase": "thinking"})
 
-        system_p = (
-            "You are a course assistant that generates practice problems for students.\n"
-            "Based on the SOURCES and the student's context, create ONE mathematical problem.\n\n"
-            "RULES:\n"
-            "- The problem must be solvable using the material in the sources\n"
-            "- Include a clear, specific task (e.g. 'Compute...', 'Find...', 'Show that...')\n"
-            "- The problem should have a concrete numerical or symbolic answer\n"
-            "- Do not include any solution, hints, answer key, or final answer\n"
-            "- Use LaTeX for all math formulas\n"
-            "- Keep the problem self-contained\n\n"
-            "Always reply in the same language the user is writing in.\n\n"
-            "Output format:\n"
-            "**Problem:**\n"
-            "(problem statement)\n"
-        )
+        system_p = get_prompt("problem", lang)
 
         user_p = (
             "SOURCES:\n" + "\n".join(source_blocks)
@@ -933,6 +873,7 @@ def generate_problem():
 @app.post("/calculate-answer")
 def calculate_answer():
     data = request.get_json(force=True) or {}
+    lang = _resolve_lang(data)
     request_id = current_request_id()
 
     problem = (data.get("problem") or "").strip()
@@ -976,20 +917,7 @@ def calculate_answer():
         yield _sse("meta", {"request_id": request_id, "chat_model": chat_model})
         yield _sse("status", {"phase": "thinking"})
 
-        system_s = (
-            "You are a course assistant that solves math practice problems.\n"
-            "Use the SOURCES when they are relevant and rely on standard mathematical reasoning.\n"
-            "Solve the exact problem you are given.\n\n"
-            "RULES:\n"
-            "- Do not change the problem or introduce a different task\n"
-            "- Show the key steps clearly and concisely\n"
-            "- Use LaTeX for all math formulas\n"
-            "- If the problem has multiple parts (a), (b), (c), etc., label each part clearly "
-            "  and box or bold the final answer for every part\n"
-            "- End with a line exactly in this format:\n"
-            "FINAL ANSWER: (final answer)\n\n"
-            "Always reply in the same language the user is writing in.\n"
-        )
+        system_s = get_prompt("solve", lang)
 
         user_s = (
             "SOURCES:\n" + "\n".join(source_blocks)
@@ -1041,6 +969,7 @@ def calculate_answer():
 @app.post("/hint")
 def generate_hint():
     data = request.get_json(force=True) or {}
+    lang = _resolve_lang(data)
     request_id = current_request_id()
 
     problem = (data.get("problem") or "").strip()
@@ -1069,52 +998,7 @@ def generate_hint():
         chat_model,
     )
 
-    # Progressive hint prompts inspired by Erasmus-CTM/math-exercise layering
-    _HINT_PROMPTS = {
-        1: (
-            "You are a helpful tutor. A student is stuck on a math problem.\n"
-            "Write one or two natural sentences. Briefly acknowledge any genuine progress the student may have made, "
-            "then ask exactly ONE guiding question that helps them notice the next useful concept, definition, or relationship.\n"
-            "Do NOT give a formula, method, decomposition, intermediate value, or answer.\n\n"
-            "Always reply in the same language the user is writing in.\n\n"
-            "Output format:\n"
-            "**Hint:**\n"
-            "(your guiding question)\n"
-        ),
-        2: (
-            "You are a helpful tutor. A student is stuck on a math problem.\n"
-            "Give a short conceptual nudge in one or two natural sentences. You may name a broad strategy or principle, "
-            "but do NOT apply it to the exercise's numbers or variables.\n"
-            "Do NOT use headings, lists, checklists, formulas, calculations, substitutions, intermediate values, or the answer.\n\n"
-            "Always reply in the same language the user is writing in.\n\n"
-            "Output format:\n"
-            "**Hint:**\n"
-            "(your conceptual nudge)\n"
-        ),
-        3: (
-            "You are a helpful tutor. A student is stuck on a math problem.\n"
-            "Begin directly with the general mathematical procedure and explain it in at most three concise steps. "
-            "You may state a general formula, but you must stop BEFORE the first task-specific substitution or calculation.\n"
-            "Do NOT compute any exponent, mantissa, field value, intermediate result, or requested answer.\n\n"
-            "Always reply in the same language the user is writing in.\n\n"
-            "Output format:\n"
-            "**Hint:**\n"
-            "1. ...\n"
-            "2. ...\n"
-            "3. ... (optional)\n"
-        ),
-        4: (
-            "You are a helpful tutor. A student is still stuck after three hints.\n"
-            "Provide a concise complete worked solution with substitutions, calculations, and the final answer.\n"
-            "Be clear and pedagogical, but do not add extra commentary beyond what is needed to solve the exercise.\n\n"
-            "Always reply in the same language the user is writing in.\n\n"
-            "Output format:\n"
-            "**Hint:**\n"
-            "(full worked solution)\n"
-        ),
-    }
-
-    system_h = _HINT_PROMPTS[hint_level]
+    system_h = get_prompt(f"hint_{hint_level}", lang)
     user_h = (
         "I am stuck on this problem:\n\n"
         + problem
@@ -1150,6 +1034,7 @@ def generate_hint():
 @app.post("/assess")
 def assess_answer():
     data = request.get_json(force=True) or {}
+    lang = _resolve_lang(data)
     request_id = current_request_id()
 
     problem = (data.get("problem") or "").strip()
@@ -1183,25 +1068,7 @@ def assess_answer():
         yield _sse("meta", {"request_id": request_id, "chat_model": chat_model})
         yield _sse("status", {"phase": "assessing"})
 
-        system_a = (
-            "You are a course assistant that assesses student answers to math problems.\n\n"
-            "RULES:\n"
-            "- Compare the student's answer to the official generated solution\n"
-            "- Accept mathematically equivalent answers even if the wording or steps differ\n"
-            "- If the student gives only the final answer, judge whether that final answer is correct\n"
-            "- Be encouraging but honest\n"
-            "- If wrong, name the TYPE of error (e.g. 'sign error', 'forgotten chain-rule factor') "
-            "  and point to the concept they should revisit. Give a forward-looking hint about what "
-            "  to try next. Do NOT show the corrected calculation, the corrected steps, or the final answer.\n"
-            "- If partially correct, acknowledge what's right and point out what's missing "
-            "  without filling in the missing parts for them\n"
-            "- If correct, confirm and optionally add a brief insight\n"
-            "- Use LaTeX for math formulas\n\n"
-            "Always reply in the same language the user is writing in.\n\n"
-            "Output format:\n"
-            "**Result:** Correct / Partially correct / Incorrect\n\n"
-            "(explanation)\n"
-        )
+        system_a = get_prompt("assess", lang)
 
         user_a = (
             "PROBLEM:\n" + problem
@@ -1228,6 +1095,7 @@ def assess_answer():
 @app.post("/explain-question")
 def explain_question():
     data = request.get_json(force=True) or {}
+    lang = _resolve_lang(data)
     request_id = current_request_id()
 
     problem = (data.get("problem") or "").strip()
@@ -1249,19 +1117,7 @@ def explain_question():
         yield _sse("meta", {"request_id": request_id, "chat_model": chat_model})
         yield _sse("status", {"phase": "thinking"})
 
-        system_eq = (
-            "You are a helpful tutor. A student wants to understand what a math problem is asking.\n"
-            "Break down the problem in plain language:\n"
-            "- Explain what quantity or property the student needs to find or prove.\n"
-            "- Identify the key objects, variables, or functions involved.\n"
-            "- Clarify any notation or terminology that might be confusing.\n"
-            "- Name the general topic or concept being tested, but do NOT teach the method or solve the problem.\n"
-            "- Do NOT give formulas, steps, hints, or the answer.\n\n"
-            "Always reply in the same language the user is writing in.\n\n"
-            "Output format:\n"
-            "**Explanation:**\n"
-            "(your breakdown)\n"
-        )
+        system_eq = get_prompt("explain", lang)
 
         user_eq = (
             "Help me understand what this problem is asking:\n\n"
@@ -1292,6 +1148,7 @@ def explain_question():
 @app.post("/check-approach")
 def check_approach():
     data = request.get_json(force=True) or {}
+    lang = _resolve_lang(data)
     request_id = current_request_id()
 
     problem = (data.get("problem") or "").strip()
@@ -1317,20 +1174,7 @@ def check_approach():
         yield _sse("meta", {"request_id": request_id, "chat_model": chat_model})
         yield _sse("status", {"phase": "thinking"})
 
-        system_ca = (
-            "You are a helpful tutor. A student has described their approach to a math problem.\n"
-            "Evaluate their strategy and reasoning:\n"
-            "- If the approach is sound, confirm and gently reinforce why it is a good direction.\n"
-            "- If the approach has gaps or misconceptions, name the issue and suggest a correction to the strategy.\n"
-            "  Do NOT fill in the missing calculations or give the answer.\n"
-            "- If the approach is completely off, redirect them toward a more suitable strategy without solving the problem.\n"
-            "- Be encouraging and specific about the method, not the numerical result.\n"
-            "- Do NOT compute the final answer or verify whether their final number is correct.\n\n"
-            "Always reply in the same language the user is writing in.\n\n"
-            "Output format:\n"
-            "**Feedback:**\n"
-            "(your evaluation)\n"
-        )
+        system_ca = get_prompt("check_approach", lang)
 
         user_ca = (
             "PROBLEM:\n" + problem
@@ -1362,6 +1206,7 @@ def check_approach():
 @app.post("/exercise-chat")
 def exercise_chat():
     data = request.get_json(force=True) or {}
+    lang = _resolve_lang(data)
     request_id = current_request_id()
 
     problem = (data.get("problem") or "").strip()
@@ -1398,23 +1243,7 @@ def exercise_chat():
         yield _sse("meta", {"request_id": request_id, "chat_model": chat_model})
         yield _sse("status", {"phase": "thinking"})
 
-        system_e = (
-            "You are a helpful but disciplined math tutor. A student is working on a practice problem from their course materials.\n"
-            "Your goal is to help the student learn, not to solve the exercise for them.\n\n"
-            "STRICT RULES:\n"
-            "- Do NOT solve any part of the current exercise for the student.\n"
-            "- Do NOT compute intermediate results, gradients, Hessians, determinants, or any step-specific values that belong to the exercise.\n"
-            "- Do NOT reveal the final answer or a worked example using the exercise's variables or numbers.\n"
-            "- When explaining a concept or technique, use a DIFFERENT, unrelated example or state the method in general terms. "
-            "  Never apply the explanation directly to the numbers, variables, or specific task in the current exercise.\n"
-            "- If the student asks how to do something, explain the general approach or formula and let them carry out the steps themselves.\n"
-            "- Only confirm whether the student's own reasoning is on the right track, or guide them to find errors in their own work.\n"
-            "  Do not produce the correct calculation for them.\n"
-            "- If the student explicitly demands the full solution, refuse politely and offer a hint instead.\n\n"
-            "Always reply in the same language the user is writing in.\n\n"
-            "TONE:\n"
-            "- Be encouraging, use LaTeX for math, and keep responses concise."
-        )
+        system_e = get_prompt("exercise_chat", lang)
 
         user_e = "EXERCISE CONTEXT:\n" + problem
         if generated_answer:
