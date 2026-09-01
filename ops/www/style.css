@@ -1991,6 +1991,155 @@ details > summary.box-title {
   box-shadow: 0 1px 4px rgba(45, 50, 41, .1);
 }
 
+/* === Settings Modal === */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal-box {
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
+  width: min(720px, 100%);
+  min-height: 500px;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.modal-header h2 {
+  font-size: 18px;
+  font-weight: 650;
+  margin: 0;
+  color: var(--text);
+}
+
+.modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  min-height: auto;
+  transition: background 0.15s, color 0.15s;
+}
+
+.modal-close:hover {
+  background: #f1f1f1;
+  color: var(--text);
+}
+
+.modal-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.modal-nav {
+  width: 180px;
+  flex: 0 0 180px;
+  padding: 12px;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.modal-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 520;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+  min-height: auto;
+}
+
+.modal-nav-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text);
+}
+
+.modal-nav-item.active {
+  background: var(--green-pale);
+  color: var(--green);
+  font-weight: 600;
+}
+
+.modal-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+}
+
+.settings-label {
+  font-size: 14px;
+  font-weight: 520;
+  color: var(--text);
+}
+
+.settings-select {
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  min-width: 120px;
+  cursor: pointer;
+}
+
+.settings-separator {
+  height: 1px;
+  background: var(--line);
+  margin: 4px 0;
+}
+
 /* === Mobile overlay sidebars === */
 @media (max-width: 768px) {
   .sidebar {

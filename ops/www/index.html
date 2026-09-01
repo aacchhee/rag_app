@@ -2556,9 +2556,41 @@
       });
 
       $("userMenuSettingsBtn").addEventListener("click", function () {
-        // TODO: open settings
         $("userMenuDropdown").classList.remove("open");
+        $("settingsOverlay").style.display = "flex";
       });
+
+      $("settingsCloseBtn").addEventListener("click", function () {
+        $("settingsOverlay").style.display = "none";
+      });
+
+      $("settingsOverlay").addEventListener("click", function (e) {
+        if (e.target === $("settingsOverlay")) {
+          $("settingsOverlay").style.display = "none";
+        }
+      });
+
+      // Settings modal tab switching
+      var settingsNavItems = document.querySelectorAll(".modal-nav-item");
+      for (var s = 0; s < settingsNavItems.length; s++) {
+        (function (item) {
+          item.addEventListener("click", function () {
+            var tab = item.getAttribute("data-settings-tab");
+            // Update nav active state
+            for (var j = 0; j < settingsNavItems.length; j++) {
+              settingsNavItems[j].classList.remove("active");
+            }
+            item.classList.add("active");
+            // Show matching content, hide others
+            var contentPanes = document.querySelectorAll(".modal-content");
+            for (var k = 0; k < contentPanes.length; k++) {
+              contentPanes[k].style.display = "none";
+            }
+            var targetPane = $("settingsContent" + (tab.charAt(0).toUpperCase() + tab.slice(1)));
+            if (targetPane) targetPane.style.display = "block";
+          });
+        })(settingsNavItems[s]);
+      }
 
       function syncLeftSidebarVar() {
         var isCollapsed = $("sidebar").classList.contains("collapsed");
@@ -2733,6 +2765,48 @@
       boot();
     }
   </script>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settingsOverlay" style="display:none;">
+    <div class="modal-box" id="settingsModal">
+      <div class="modal-header">
+        <button class="modal-close" id="settingsCloseBtn" type="button" aria-label="Close">×</button>
+        <h2>Settings</h2>
+      </div>
+      <div class="modal-body">
+        <div class="modal-nav">
+          <button class="modal-nav-item active" type="button" data-settings-tab="general">
+            <span aria-hidden="true">⚙</span> General
+          </button>
+          <button class="modal-nav-item" type="button" data-settings-tab="storage">
+            <span aria-hidden="true">💾</span> Storage
+          </button>
+        </div>
+        <div class="modal-content" id="settingsContentGeneral">
+          <div class="settings-row">
+            <span class="settings-label">Appearance</span>
+            <select id="settingsAppearance" class="settings-select">
+              <option value="system" selected>System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
+          <div class="settings-separator"></div>
+          <div class="settings-row">
+            <span class="settings-label">Language</span>
+            <select id="settingsLanguage" class="settings-select">
+              <option value="en" selected>English</option>
+              <option value="no">Norsk</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-content" id="settingsContentStorage" style="display:none;">
+          <!-- Storage settings content will go here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
 </body>
 
 </html>
