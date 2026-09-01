@@ -2571,6 +2571,21 @@
       });
 
       // Settings modal tab switching
+      // Load saved settings from localStorage
+      var _savedPrefs = getUserPrefs();
+      if (_savedPrefs.appearance) $("settingsAppearance").value = _savedPrefs.appearance;
+      if (_savedPrefs.language) $("settingsLanguage").value = _savedPrefs.language;
+
+      $("settingsAppearance").addEventListener("change", function () {
+        setUserPref("appearance", $("settingsAppearance").value);
+        logDebug("Appearance setting changed", { value: $("settingsAppearance").value });
+      });
+
+      $("settingsLanguage").addEventListener("change", function () {
+        setUserPref("language", $("settingsLanguage").value);
+        logDebug("Language setting changed", { value: $("settingsLanguage").value });
+      });
+
       var settingsNavItems = document.querySelectorAll(".modal-nav-item");
       for (var s = 0; s < settingsNavItems.length; s++) {
         (function (item) {
