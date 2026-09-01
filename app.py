@@ -15,7 +15,7 @@ from log_utils import current_request_id, preview_text
 from rag.retriever import Retriever
 from rag.llm import chat_completion, chat_completion_stream
 from rag import settings as RAG
-from prompts import get_prompt
+from prompts import get_prompt, get_language_instruction
 
 app = Flask(__name__)
 
@@ -461,6 +461,7 @@ def ask():
     system_1 = get_prompt("answer_notes", lang)
 
     user_1 = (
+        get_language_instruction(lang) + "\n\n"
         "SOURCES:\n"
         + "\n".join(source_blocks)
         + "\nQUESTION:\n"
@@ -505,6 +506,7 @@ def ask():
     if do_extra:
         system_2 = get_prompt("extra", lang)
         user_2 = (
+            get_language_instruction(lang) + "\n\n"
             "Question:\n" + q
             + "\n\nNotes-based answer (authoritative for course-specific claims):\n" + notes_answer
             + "\n\n(For consistency only) Retrieved sources:\n" + "\n".join(source_blocks)
@@ -656,6 +658,7 @@ def ask_stream():
             system_1 = get_prompt("answer_notes", lang)
 
         user_1 = (
+            get_language_instruction(lang) + "\n\n"
             "SOURCES:\n" + "\n".join(source_blocks)
             + "\nQUESTION:\n" + q
             + "\n\nAnswer based only on SOURCES. End with COVERAGE line."
@@ -717,6 +720,7 @@ def ask_stream():
 
                 system_2 = get_prompt("extra", lang)
                 user_2 = (
+                    get_language_instruction(lang) + "\n\n"
                     "Question:\n" + q
                     + "\n\nNotes-based answer (authoritative for course-specific claims):\n" + notes_answer
                     + "\n\n(For consistency only) Retrieved sources:\n" + "\n".join(source_blocks)
@@ -822,6 +826,7 @@ def generate_problem():
         system_p = get_prompt("problem", lang)
 
         user_p = (
+            get_language_instruction(lang) + "\n\n"
             "SOURCES:\n" + "\n".join(source_blocks)
         )
 
@@ -920,6 +925,7 @@ def calculate_answer():
         system_s = get_prompt("solve", lang)
 
         user_s = (
+            get_language_instruction(lang) + "\n\n"
             "SOURCES:\n" + "\n".join(source_blocks)
             + "\n\nGENERATED PRACTICE PROBLEM:\n" + problem_text
         )
@@ -1000,6 +1006,7 @@ def generate_hint():
 
     system_h = get_prompt(f"hint_{hint_level}", lang)
     user_h = (
+        get_language_instruction(lang) + "\n\n"
         "I am stuck on this problem:\n\n"
         + problem
         + "\n\nGive me hint level " + str(hint_level) + "."
@@ -1071,6 +1078,7 @@ def assess_answer():
         system_a = get_prompt("assess", lang)
 
         user_a = (
+            get_language_instruction(lang) + "\n\n"
             "PROBLEM:\n" + problem
             + "\n\nOFFICIAL GENERATED SOLUTION:\n" + generated_answer
             + "\n\nSTUDENT'S ANSWER:\n" + student_answer
@@ -1120,6 +1128,7 @@ def explain_question():
         system_eq = get_prompt("explain", lang)
 
         user_eq = (
+            get_language_instruction(lang) + "\n\n"
             "Help me understand what this problem is asking:\n\n"
             + problem
         )
@@ -1177,6 +1186,7 @@ def check_approach():
         system_ca = get_prompt("check_approach", lang)
 
         user_ca = (
+            get_language_instruction(lang) + "\n\n"
             "PROBLEM:\n" + problem
             + "\n\nMY APPROACH:\n" + student_answer
             + "\n\nPlease evaluate my approach."
@@ -1245,7 +1255,7 @@ def exercise_chat():
 
         system_e = get_prompt("exercise_chat", lang)
 
-        user_e = "EXERCISE CONTEXT:\n" + problem
+        user_e = get_language_instruction(lang) + "\n\nEXERCISE CONTEXT:\n" + problem
         if generated_answer:
             user_e += "\n\nGENERATED ANSWER KEY (for reference; do not reveal unless asked):\n" + generated_answer
 
