@@ -10,6 +10,16 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script>
+    (function() {
+      var key = 'rag_user_prefs';
+      var prefs = {};
+      try { prefs = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) {}
+      var appearance = prefs.appearance || 'system';
+      var dark = appearance === 'dark' || (appearance === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+    })();
+  </script>
 
   <!-- Marked.js -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -68,7 +78,7 @@
         <div class="messages-area" id="messagesArea">
           <div class="messages-inner">
           <div id="welcome" style="display:flex; align-items:center; justify-content:center; flex:1; height:100%;">
-            <div style="text-align:center; color:#999;">
+            <div style="text-align:center; color:var(--welcome-text);">
               <div style="font-size:38px; margin-bottom:12px;">📏</div>
               <div style="font-size:18px; font-weight:500;">Let's math!</div>
             </div>
@@ -484,6 +494,17 @@
         prefs[key] = value;
         localStorage.setItem(USER_PREFS_KEY, JSON.stringify(prefs));
       } catch (e) { }
+    }
+
+    function applyTheme() {
+      var prefs = getUserPrefs();
+      var mode = prefs.appearance || "system";
+      var dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      if (dark) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      } else {
+        document.documentElement.removeAttribute("data-theme");
+      }
     }
 
     // --- Conversation persistence (localStorage) ---
@@ -1683,7 +1704,7 @@
     function renderChatConversation() {
       var scroll = $("chatScroll");
       if (chatHistory.length === 0 && exercises.length === 0) {
-        scroll.innerHTML = '<div style="padding:30px;text-align:center;color:#aaa;">Start a conversation by asking a question.</div>';
+        scroll.innerHTML = '<div style="padding:30px;text-align:center;color:var(--chat-placeholder);">Start a conversation by asking a question.</div>';
         return;
       }
 
@@ -2582,9 +2603,11 @@
       var _savedPrefs = getUserPrefs();
       if (_savedPrefs.appearance) $("settingsAppearance").value = _savedPrefs.appearance;
       if (_savedPrefs.language) $("settingsLanguage").value = _savedPrefs.language;
+      applyTheme();
 
       $("settingsAppearance").addEventListener("change", function () {
         setUserPref("appearance", $("settingsAppearance").value);
+        applyTheme();
         logDebug("Appearance setting changed", { value: $("settingsAppearance").value });
       });
 
@@ -2778,6 +2801,11 @@
       window.addEventListener("unhandledrejection", function (e) {
         setError("Promise error: " + (e.reason || "unknown"));
         setStatus("Error");
+      });
+
+      // React when the OS changes between light/dark in "system" mode
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () {
+        applyTheme();
       });
     }
 
