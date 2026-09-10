@@ -1754,7 +1754,10 @@
           html += '<div class="assistant-avatar" aria-hidden="true">RAG</div>';
           html += '<div class="assistant-body">';
           html += '<div class="assistant-label">Assistant <span>&middot;</span> <small>based on your materials</small></div>';
-          html += '<div class="chat-bubble-content">' + renderMarkdown(turn.answer) + '</div>';
+          html += '<div class="chat-bubble-content" data-raw="' + escapeHtml(turn.answer || "") + '">' + renderMarkdown(turn.answer) + '</div>';
+          html += '<div class="chat-bubble-actions">';
+          html += '<button class="copy-btn" type="button" data-copy-target="raw" title="Copy answer">Copy</button>';
+          html += '</div>';
           if (turn.coverage) {
             html += '<div class="chat-bubble-meta"><span class="pill"><span></span> coverage: ' + escapeHtml(turn.coverage) + '</span></div>';
           }
@@ -2117,6 +2120,34 @@
     }
 
     // Streaming
+    function copyText(text, btnEl) {
+      var raw = text || "";
+      function done(ok) {
+        if (!btnEl) return;
+        var prev = btnEl.textContent;
+        btnEl.textContent = ok ? "Copied" : "Failed";
+        btnEl.classList.add("copied");
+        setTimeout(function() {
+          btnEl.textContent = prev;
+          btnEl.classList.remove("copied");
+        }, ok ? 2000 : 3000);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(raw).then(function() { done(true); }, function() { done(false); });
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = raw;
+        ta.style.cssText = "position:fixed;left:-9999px;top:-9999px;";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand("copy"); } catch (e) {}
+        document.body.removeChild(ta);
+        done(ok);
+      }
+    }
+
     function scheduleRender(targetId, rawText) {
       // Render markdown immediately for text, defer MathJax
       $(targetId).innerHTML = renderMarkdown(rawText);
@@ -2771,6 +2802,16 @@
         var msgIdx = parseInt(btn.getAttribute("data-msg-idx"), 10);
         if (isNaN(msgIdx)) return;
         toggleRightAnswerBubble(msgIdx);
+      });
+
+      // Copy button on assistant bubbles
+      document.addEventListener("click", function (e) {
+        var btn = e.target.closest(".copy-btn");
+        if (!btn) return;
+        var bubbleContent = btn.closest(".chat-bubble.assistant").querySelector(".chat-bubble-content[data-raw]");
+        if (bubbleContent) {
+          copyText(bubbleContent.getAttribute("data-raw"), btn);
+        }
       });
 
       // Adjust difficulty / same from exercise bubbles

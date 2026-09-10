@@ -1428,6 +1428,40 @@ code {
   font-size: 11px;
 }
 
+.copy-btn {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--bubble-meta);
+  font-size: 11px;
+  font-weight: 520;
+  cursor: pointer;
+  min-height: auto;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.copy-btn:hover,
+.copy-btn:focus-visible {
+  background: var(--green-pale);
+  color: var(--green);
+  border-color: var(--green-border);
+}
+
+.copy-btn.copied {
+  color: var(--green);
+  border-color: var(--green-border);
+}
+
+.chat-bubble-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+  padding: 0 6px;
+  gap: 6px;
+}
+
 .chat-sources {
   font-size: 12px;
   color: var(--chat-sources);
