@@ -69,7 +69,7 @@
   --btn-secondary-hover-bg: #fff;
   --btn-secondary-hover-border: #abc0ae;
   --textarea-border: #cfd8cf;
-  --textarea-shadow: var(--textarea-shadow);
+  --textarea-shadow: rgba(36, 53, 43, .08);
   --input-gradient: linear-gradient(0deg, var(--bg) 72%, var(--bg-transparent));
   --topbar-bg: rgba(250, 251, 248, .88);
 
@@ -87,11 +87,11 @@
   --overlay-medium: rgba(255,255,255,.62);
   --overlay-strong: rgba(255,255,255,.9);
 
-  --scrollbar-thumb: #ccc;
+  --right-sidebar-scroll-thumb: var(--scrollbar-thumb);
   --scrollbar-thumb-hover: #999;
   --scrollbar-track-sidebar: #eef2e9;
 
-  --modal-overlay: var(--modal-overlay);
+  --modal-overlay: rgba(255,255,255,0.5);
   --modal-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
   --modal-nav-hover: rgba(0, 0, 0, 0.04);
   --modal-close-hover: #f1f1f1;
@@ -107,7 +107,7 @@
   --hint-shadow: 0 1px 4px rgba(45, 50, 41, .1);
   --btn-shadow: 0 3px 10px rgba(23,74,55,.04);
   --exercise-box-shadow: 0 12px 35px rgba(61, 58, 37, .06);
-  --shadow-dropdown: 0 6px 24px var(--shadow-dropdown);
+  --shadow-dropdown: 0 6px 24px rgba(36, 53, 43, .12);
   --rag-indicator: #77827a;
   --rag-dot: #5e9e70;
   --pill-dot: #61a16f;
