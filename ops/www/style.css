@@ -404,8 +404,11 @@ button, textarea { font: inherit; }
   user-select: none;
 }
 
-.conversations-list li:hover {
+.conversations-list li:hover,
+.conversations-list li:focus-visible {
   background: var(--overlay-weak);
+  outline: 2px solid var(--focus-border);
+  outline-offset: -2px;
 }
 
 .conversations-list li.active {

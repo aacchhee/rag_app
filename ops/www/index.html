@@ -585,10 +585,23 @@
         var conv = loadConversation(id);
         var title = conv && conv.title ? conv.title : "Conversation";
         var li = document.createElement("li");
-        if (id === currentConvId) li.classList.add("active");
+        li.setAttribute("tabindex", "0");
+        li.setAttribute("role", "button");
+        if (id === currentConvId) {
+          li.classList.add("active");
+          li.setAttribute("aria-current", "true");
+        }
         li.onclick = (function (cid) {
           return function () {
             switchToConversation(cid);
+          };
+        })(id);
+        li.onkeydown = (function (cid) {
+          return function (e) {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              switchToConversation(cid);
+            }
           };
         })(id);
 
