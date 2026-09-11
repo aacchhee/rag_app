@@ -83,47 +83,6 @@
               <div style="font-size:18px; font-weight:500;">Let's math!</div>
             </div>
           </div>
-          <div id="singleView" class="section">
-            <div id="singlePromptBubble" class="chat-bubble user single-question-bubble" style="display:none;">
-              <div class="chat-bubble-label">You</div>
-              <div id="singlePromptContent" class="chat-bubble-content"></div>
-            </div>
-
-            <h2 class="box-title">From the notes <span id="cov" class="pill" style="display:none;"></span></h2>
-            <div id="notes" class="answer"></div>
-
-            <div id="sources" class="sources"></div>
-
-            <details id="extraBox" style="display:none;">
-              <summary class="box-title">Extra context (not from notes)</summary>
-              <div id="extra" class="answer" style="margin-top:10px;"></div>
-            </details>
-
-            <!-- Exercise section (single-mode, appears after answer) -->
-            <div id="exerciseSection" class="exercise-section" style="display:none;">
-              <h2 class="box-title">Practice Exercise</h2>
-              <div id="exerciseContent" class="exercise-box"></div>
-
-              <div id="answerInputArea" class="answer-input-area">
-                <label for="studentAnswer">Your answer:</label>
-                <textarea id="studentAnswer" class="answer-input"
-                  placeholder="Enter your answer here… (LaTeX is OK, e.g. $\frac{1}{2}$)"></textarea>
-                <div class="row">
-                  <button id="hintBtn" class="hint-btn" type="button">💡</button>
-                  <button id="submitAnswerBtn" class="submit-answer-btn" type="button">Check my answer</button>
-                  <button id="showAnswerBtn" class="show-answer-btn" type="button" disabled>Show answer</button>
-                  <button id="newExerciseBtn" class="new-exercise-btn" type="button">New exercise</button>
-                </div>
-              </div>
-
-              <h3 id="generatedAnswerTitle" class="box-title" style="display:none;">Answer</h3>
-              <div id="generatedAnswerBox" class="generated-answer-box answer"></div>
-              <h3 id="hintTitle" class="box-title" style="display:none;">Hint</h3>
-              <div id="hintBox" class="hint-box" style="display:none;"></div>
-              <h3 id="assessmentTitle" class="box-title" style="display:none;">Assessment</h3>
-              <div id="assessmentBox" class="assessment-box"></div>
-            </div>
-          </div>
 
           <!-- Chat conversation view -->
           <div id="chatView" class="chat-container">
@@ -418,20 +377,6 @@
         '</div>';
     }
 
-    function renderSources(list) {
-      if (!list || !list.length) {
-        $("sources").innerHTML = "<div class=\"muted\">No sources retrieved.</div>";
-        return;
-      }
-      var items = list.map(function (s) {
-        var heading = s.heading ? (" — " + escapeHtml(s.heading)) : "";
-        return "<li><strong>" + escapeHtml(s.tag || "") + "</strong> " +
-          escapeHtml(s.source || "") + heading +
-          " (chunk " + escapeHtml(String(s.chunk_id)) + ")</li>";
-      }).join("");
-      $("sources").innerHTML = "<div><strong>Sources</strong></div><ul>" + items + "</ul>";
-    }
-
     var _typesetInProgress = false;
     var _typesetPending = false;
     async function typesetMath() {
@@ -458,13 +403,9 @@
     }
 
     // Streaming state
-    var isChatMode = true;
     var chatHistory = []; // [{question, answer}]
     var rawNotes = "";
-    var rawExtra = "";
     var mathRenderTimer = null;
-    var lastSingleQuestion = ""; // last single-mode question shown above the answer
-    var lastNotesAnswer = "";    // last notes answer (for exercise context)
     var currentExerciseRaw = "";  // raw exercise text from LLM (active exercise)
     var currentGeneratedAnswerRaw = ""; // hidden answer key for assessment (active exercise)
 
@@ -472,7 +413,6 @@
     // Note: internal object keys keep "problem" for backward compat with stored conversations
     var exercises = [];
     var activeExerciseIndex = -1;
-    var currentHintLevel = 0; // tracks hint level for single-mode exercise
 
     var MAX_TURNS = 20;
 
@@ -769,19 +709,16 @@
     function startNewConversation() {
       chatHistory = [];
       rawNotes = "";
-      rawExtra = "";
       currentExerciseRaw = "";
       currentGeneratedAnswerRaw = "";
       exercises = [];
       activeExerciseIndex = -1;
-      currentHintLevel = 0;
       currentConvId = null;
       currentConvLockedCourse = null;
       _syncCourseSelectLock();
       renderChatConversation();
       renderSidebar();
       resetRightSidebarExerciseUI();
-      resetRightSidebarAssessmentUI();
       $("rightSidebarWelcome").style.display = "flex";
       $("rightExerciseArea").style.display = "none";
       $("rightAnswerInputArea").classList.remove("visible");
@@ -796,17 +733,14 @@
       if (!conv || !conv.history) return;
       chatHistory = conv.history;
       rawNotes = "";
-      rawExtra = "";
       exercises = Array.isArray(conv.exercises) ? conv.exercises : (Array.isArray(conv.problems) ? conv.problems : []);
       activeExerciseIndex = -1;
       currentExerciseRaw = "";
       currentGeneratedAnswerRaw = "";
-      currentHintLevel = 0;
       currentConvId = id;
       currentConvLockedCourse = conv.course || null;
       _syncCourseSelectLock();
       $("welcome").style.display = "none";
-      resetRightSidebarAssessmentUI();
       if (exercises.length > 0) {
         activeExerciseIndex = exercises.length - 1;
         renderActiveExercise();
@@ -836,20 +770,6 @@
       renderSidebar();
     }
 
-    function resetGeneratedAnswerUI() {
-      $("generatedAnswerTitle").style.display = "none";
-      $("generatedAnswerBox").classList.remove("visible");
-      $("generatedAnswerBox").innerHTML = "";
-      $("showAnswerBtn").textContent = "Show answer";
-      $("showAnswerBtn").disabled = true;
-    }
-
-    function resetAssessmentUI() {
-      $("assessmentTitle").style.display = "none";
-      $("assessmentBox").classList.remove("visible");
-      $("assessmentBox").innerHTML = "";
-    }
-
     // --- Right sidebar helpers ---
     function buildConversationContext() {
       if (!chatHistory || !chatHistory.length) return "";
@@ -864,10 +784,6 @@
     function resetRightSidebarExerciseUI() {
       $("rightShowAnswerBtn").textContent = "Show answer";
       $("rightShowAnswerBtn").disabled = true;
-    }
-
-    function resetRightSidebarAssessmentUI() {
-      // no-op; assessment lives in chat messages now
     }
 
     function animateSync(fn, duration) {
@@ -1048,13 +964,6 @@
     }
 
     function _isActiveExerciseEngaged() {
-      if (!isChatMode) {
-        if (currentHintLevel > 0) return true;
-        if ($("assessmentBox").classList.contains("visible")) return true;
-        if ($("generatedAnswerBox").classList.contains("visible")) return true;
-        if (($("studentAnswer").value || "").trim()) return true;
-        return false;
-      }
       if (activeExerciseIndex < 0 || activeExerciseIndex >= exercises.length) return false;
       var prob = exercises[activeExerciseIndex];
       if (!prob) return false;
@@ -1125,120 +1034,63 @@
       return contentEl ? (contentEl.dataset.raw || "") : "";
     }
 
-    async function requestHint(isRight) {
+    async function requestHint() {
       var exerciseText = currentExerciseRaw || "";
       if (!exerciseText) return;
 
-      // Determine next hint level
-      var nextLevel;
-      if (isRight) {
-        var prob = exercises[activeExerciseIndex];
-        if (!prob || !Array.isArray(prob.messages)) return;
-        nextLevel = (typeof prob.hint_level === "number" ? prob.hint_level : 0) + 1;
-        if (nextLevel > 4) nextLevel = 4;
-      } else {
-        nextLevel = currentHintLevel + 1;
-        if (nextLevel > 4) nextLevel = 4;
-      }
+      var prob = exercises[activeExerciseIndex];
+      if (!prob || !Array.isArray(prob.messages)) return;
+      var nextLevel = (typeof prob.hint_level === "number" ? prob.hint_level : 0) + 1;
+      if (nextLevel > 4) nextLevel = 4;
 
-      // Right sidebar: chat-based hint
-      if (isRight) {
-        var prob = exercises[activeExerciseIndex];
-        _pushRightUserMessage("Give me a hint");
+      _pushRightUserMessage("Give me a hint");
 
-        var bubbleId = "hint_" + Date.now();
-        prob.messages.push({ role: "assistant", text: "", kind: "hint", hintLevel: nextLevel, createdAt: Date.now(), bubbleId: bubbleId });
-        renderRightChat();
-        var scroll = $("rightChatScroll");
-        if (scroll) scroll.scrollTop = scroll.scrollHeight;
+      var bubbleId = "hint_" + Date.now();
+      prob.messages.push({ role: "assistant", text: "", kind: "hint", hintLevel: nextLevel, createdAt: Date.now(), bubbleId: bubbleId });
+      renderRightChat();
+      var scroll = $("rightChatScroll");
+      if (scroll) scroll.scrollTop = scroll.scrollHeight;
 
-        $("rightHintBtn").disabled = true;
-        var hintRaw = "";
-        try {
-          var payload = applySelectedCourse(applySelectedChatModel({ problem: exerciseText, hint_level: nextLevel }));
-          var response = await fetch("/rag2/hint", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-          if (!response.ok) throw new Error("HTTP " + response.status);
-          logDebug("Hint response", responseDebugInfo(response));
-          await readEventStream(response, function (event, data) {
-            if (event === "token") {
-              hintRaw = _appendRightAssistantToken(bubbleId, data.content || "") || hintRaw;
-              if (scroll) scroll.scrollTop = scroll.scrollHeight;
-              return;
-            }
-            if (event === "done") {
-              hintRaw = _finalizeRightAssistantBubble(bubbleId) || hintRaw;
-              typesetMath();
-            }
-          });
-          // Update stored message text and level
-          if (prob.messages.length > 0) {
-            var last = prob.messages[prob.messages.length - 1];
-            if (last.bubbleId === bubbleId) last.text = hintRaw;
-          }
-          prob.hint_level = nextLevel;
-          _updateHintButtonLabel($("rightHintBtn"), nextLevel);
-          if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
-        } catch (err) {
-          var failMsg = "Hint failed: " + err.message;
-          var failEl = document.getElementById(bubbleId);
-          if (failEl) {
-            var c = failEl.querySelector(".chat-bubble-content");
-            if (c) { c.textContent = failMsg; c.classList.remove("streaming-cursor"); }
-          }
-          if (prob.messages.length > 0) {
-            var last2 = prob.messages[prob.messages.length - 1];
-            if (last2.bubbleId === bubbleId) last2.text = failMsg;
-          }
-        } finally {
-          $("rightHintBtn").disabled = false;
-          typesetMath();
-        }
-        return;
-      }
-
-      // Single mode (center panel)
-      var payload = applySelectedChatModel({ problem: exerciseText, hint_level: nextLevel });
-      var btnId = "hintBtn";
-      var boxId = "hintBox";
-      var titleId = "hintTitle";
-
-      $("generatedAnswerTitle").style.display = "none";
-      $("generatedAnswerBox").classList.remove("visible");
-      $("generatedAnswerBox").style.display = "none";
-      $("assessmentTitle").style.display = "none";
-      $("assessmentBox").classList.remove("visible");
-      $("assessmentBox").style.display = "none";
-
-      $(btnId).disabled = true;
-      $(titleId).style.display = "block";
-      $(boxId).style.display = "block";
-      $(boxId).innerHTML = '<div class="thinking"></div>';
+      $("rightHintBtn").disabled = true;
       var hintRaw = "";
       try {
+        var payload = applySelectedCourse(applySelectedChatModel({ problem: exerciseText, hint_level: nextLevel }));
         var response = await fetch("/rag2/hint", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         if (!response.ok) throw new Error("HTTP " + response.status);
         logDebug("Hint response", responseDebugInfo(response));
         await readEventStream(response, function (event, data) {
           if (event === "token") {
-            hintRaw += data.content || "";
-            $(boxId).innerHTML = renderMarkdown(hintRaw);
-            $(boxId).classList.add("streaming-cursor");
-            clearTimeout(mathRenderTimer);
-            mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
+            hintRaw = _appendRightAssistantToken(bubbleId, data.content || "") || hintRaw;
+            if (scroll) scroll.scrollTop = scroll.scrollHeight;
             return;
           }
           if (event === "done") {
-            $(boxId).classList.remove("streaming-cursor");
-            $(boxId).innerHTML = renderMarkdown(hintRaw);
+            hintRaw = _finalizeRightAssistantBubble(bubbleId) || hintRaw;
             typesetMath();
           }
         });
-        currentHintLevel = nextLevel;
-        _updateHintButtonLabel($("hintBtn"), nextLevel);
+        // Update stored message text and level
+        if (prob.messages.length > 0) {
+          var last = prob.messages[prob.messages.length - 1];
+          if (last.bubbleId === bubbleId) last.text = hintRaw;
+        }
+        prob.hint_level = nextLevel;
+        _updateHintButtonLabel($("rightHintBtn"), nextLevel);
+        if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
       } catch (err) {
-        $(boxId).innerText = "Hint failed: " + err.message;
+        var failMsg = "Hint failed: " + err.message;
+        var failEl = document.getElementById(bubbleId);
+        if (failEl) {
+          var c = failEl.querySelector(".chat-bubble-content");
+          if (c) { c.textContent = failMsg; c.classList.remove("streaming-cursor"); }
+        }
+        if (prob.messages.length > 0) {
+          var last2 = prob.messages[prob.messages.length - 1];
+          if (last2.bubbleId === bubbleId) last2.text = failMsg;
+        }
       } finally {
-        $(btnId).disabled = false;
+        $("rightHintBtn").disabled = false;
+        typesetMath();
       }
     }
 
@@ -1298,121 +1150,6 @@
         logDebug("Calculate answer request failed", { label: label, error: String(e) });
         throw e;
       }
-    }
-
-    async function _submitAssessCore(studentAnswer, targetTitleId, targetBoxId, targetSubmitId, label) {
-      // Hide hint and answer boxes when showing assessment
-      var isRight = targetBoxId.startsWith("right");
-      var hintTitleId = isRight ? "rightHintTitle" : "hintTitle";
-      var hintBoxId   = isRight ? "rightHintBox"   : "hintBox";
-      var ansTitleId  = isRight ? "rightGeneratedAnswerTitle" : "generatedAnswerTitle";
-      var ansBoxId    = isRight ? "rightGeneratedAnswerBox"   : "generatedAnswerBox";
-      $(hintTitleId).style.display = "none";
-      $(hintBoxId).style.display = "none";
-      $(hintBoxId).innerHTML = "";
-      $(ansTitleId).style.display = "none";
-      $(ansBoxId).classList.remove("visible");
-      $(ansBoxId).style.display = "none";
-      $(ansBoxId).innerHTML = "";
-      var ansBtnId = isRight ? "rightShowAnswerBtn" : "showAnswerBtn";
-      $(ansBtnId).textContent = "Show answer";
-
-      $(targetTitleId).style.display = "block";
-      $(targetBoxId).classList.add("visible");
-      $(targetBoxId).style.display = "block";
-      showThinking(targetBoxId);
-      $(targetSubmitId).disabled = true;
-      setStatus("Checking your answer...");
-
-      var assessRaw = "";
-      try {
-        logDebug("Assess request start" + (label ? " (" + label + ")" : ""), {
-          exerciseLen: (currentExerciseRaw || "").length,
-          generatedLen: (currentGeneratedAnswerRaw || "").length,
-          answerLen: studentAnswer.length,
-          chatModel: getSelectedChatModel() || "(default)"
-        });
-        var response = await fetch("/rag2/assess", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(applySelectedCourse(applySelectedChatModel({
-            problem: currentExerciseRaw,
-            generated_answer: currentGeneratedAnswerRaw,
-            student_answer: studentAnswer
-          })))
-        });
-
-        if (!response.ok) {
-          var errText = await response.text();
-          throw new Error("HTTP " + response.status + "\n" + errText);
-        }
-        await readEventStream(response, function (event, data) {
-          if (event === "meta" || event === "status") return;
-          if (event === "token") {
-            assessRaw += data.content || "";
-            $(targetBoxId).innerHTML = renderMarkdown(assessRaw);
-            $(targetBoxId).classList.add("streaming-cursor");
-            clearTimeout(mathRenderTimer);
-            mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
-            return;
-          }
-          if (event === "error") {
-            throw new Error((data && data.message ? data.message : "Assessment stream error") + (data && data.request_id ? " [request_id=" + data.request_id + "]" : ""));
-          }
-          if (event === "done") { logDebug("Assess stream done", data); }
-        });
-
-        $(targetBoxId).classList.remove("streaming-cursor");
-        $(targetBoxId).innerHTML = renderMarkdown(assessRaw);
-        await typesetMath();
-        setStatus("Done.");
-        return assessRaw;
-      } catch (e) {
-        logDebug("Assess request failed", { label: label, error: String(e) });
-        setError(String(e));
-        setStatus("Error");
-      } finally {
-        $(targetSubmitId).disabled = false;
-      }
-    }
-
-    function _toggleGeneratedAnswer(targetBoxId, targetTitleId, targetBtnId) {
-      setError("");
-      if (!currentGeneratedAnswerRaw.trim()) {
-        setError("The generated answer is not ready yet. Please wait a moment.");
-        return;
-      }
-      var box = $(targetBoxId);
-      var button = $(targetBtnId);
-      if (box.classList.contains("visible")) {
-        $(targetTitleId).style.display = "none";
-        box.classList.remove("visible");
-        box.style.display = "none";
-        box.innerHTML = "";
-        button.textContent = "Show answer";
-        return;
-      }
-      // Hide hint and assessment boxes when showing answer
-      var isRight = targetBoxId.startsWith("right");
-      var hintTitleId = isRight ? "rightHintTitle" : "hintTitle";
-      var hintBoxId   = isRight ? "rightHintBox"   : "hintBox";
-      var ascTitleId  = isRight ? "rightAssessmentTitle" : "assessmentTitle";
-      var ascBoxId    = isRight ? "rightAssessmentBox"   : "assessmentBox";
-      $(hintTitleId).style.display = "none";
-      $(hintBoxId).style.display = "none";
-      $(hintBoxId).innerHTML = "";
-      $(ascTitleId).style.display = "none";
-      $(ascBoxId).classList.remove("visible");
-      $(ascBoxId).style.display = "none";
-      $(ascBoxId).innerHTML = "";
-
-      $(targetTitleId).style.display = "block";
-      box.style.display = "block";
-      box.innerHTML = renderMarkdown(currentGeneratedAnswerRaw);
-      box.classList.add("visible");
-      button.textContent = "Hide answer";
-      clearTimeout(mathRenderTimer);
-      mathRenderTimer = setTimeout(function () { typesetMath(); }, 0);
     }
 
     // --- Right sidebar wrappers ---
@@ -1638,10 +1375,6 @@
       if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
     }
 
-    function toggleGeneratedAnswer() {
-      _toggleGeneratedAnswer("generatedAnswerBox", "generatedAnswerTitle", "showAnswerBtn");
-    }
-
     async function sendRightChatMessage() {
       var textarea = $("rightStudentAnswer");
       var text = (textarea.value || "").trim();
@@ -1834,20 +1567,6 @@
       scroll.appendChild(assistantBubble);
 
       scroll.scrollTop = scroll.scrollHeight;
-    }
-
-    function renderSinglePrompt(question) {
-      var bubble = $("singlePromptBubble");
-      var content = $("singlePromptContent");
-
-      if (!question) {
-        content.textContent = "";
-        bubble.style.display = "none";
-        return;
-      }
-
-      content.textContent = question;
-      bubble.style.display = "flex";
     }
 
     function setChatModelUnavailable(message) {
@@ -2101,23 +1820,6 @@
       }
     }
 
-    // Mode switching
-    function switchMode(toChat) {
-      isChatMode = toChat;
-
-      if (toChat) {
-        $("singleView").style.display = "none";
-        $("chatView").classList.add("visible");
-        $("extraModeLabel").style.display = "none";
-        $("exerciseActions").style.display = chatHistory.length > 0 ? "flex" : "none";
-        renderChatConversation();
-      } else {
-        $("singleView").style.display = "block";
-        $("chatView").classList.remove("visible");
-        $("extraModeLabel").style.display = "flex";
-        $("exerciseActions").style.display = "none";
-      }
-    }
 
     // Streaming
     function copyText(text, btnEl) {
@@ -2148,77 +1850,37 @@
       }
     }
 
-    function scheduleRender(targetId, rawText) {
-      // Render markdown immediately for text, defer MathJax
-      $(targetId).innerHTML = renderMarkdown(rawText);
-      $(targetId).classList.add("streaming-cursor");
-
-      // Debounce MathJax (expensive, don't run on every token)
-      clearTimeout(mathRenderTimer);
-      mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
-    }
-
     // Exercise generation
     // difficultyAdjustment: "", "easier", or "harder"
     async function generateExercise(difficultyAdjustment) {
       setError("");
       currentExerciseRaw = "";
       currentGeneratedAnswerRaw = "";
-      currentHintLevel = 0;
 
       var shouldReplace = difficultyAdjustment && difficultyAdjustment !== "" && !_isActiveExerciseEngaged();
 
-      if (isChatMode) {
-        resetRightSidebarAssessmentUI();
-        $("rightSidebarWelcome").style.display = "none";
-        $("rightExerciseArea").style.display = "block";
-        $("rightExerciseContent").style.display = "block";
-        $("rightExerciseContent").classList.add("streaming-cursor");
-        $("rightAnswerInputArea").classList.remove("visible");
-        $("rightStudentAnswer").value = "";
-        showThinking("rightExerciseContent");
-      } else {
-        resetGeneratedAnswerUI();
-        $("exerciseSection").style.display = "block";
-        $("exerciseSection").classList.add("visible");
-        $("answerInputArea").classList.remove("visible");
-        resetAssessmentUI();
-        $("studentAnswer").value = "";
-        showThinking("exerciseContent");
-      }
-
+      $("rightSidebarWelcome").style.display = "none";
+      $("rightExerciseArea").style.display = "block";
+      $("rightExerciseContent").style.display = "block";
+      $("rightExerciseContent").classList.add("streaming-cursor");
+      $("rightAnswerInputArea").classList.remove("visible");
+      $("rightStudentAnswer").value = "";
+      showThinking("rightExerciseContent");
       $("exerciseBtn").disabled = true;
-      $("newExerciseBtn").disabled = true;
-      $("submitAnswerBtn").disabled = true;
       $("rightSubmitAnswerBtn").disabled = true;
       setStatus("Generating exercise…");
 
       try {
         var payload;
-        var chatPayloadBase;
-        if (isChatMode) {
-          logDebug("Exercise request start (chat mode)", {
-            turns: chatHistory.length,
-            adjustment: difficultyAdjustment || "none",
-            chatModel: getSelectedChatModel() || "(default)"
-          });
-          chatPayloadBase = {
-            conversation_context: buildConversationContext(),
-            difficulty: $("exerciseDifficulty").value
-          };
-        } else {
-          logDebug("Exercise request start", {
-            questionLen: (lastSingleQuestion || "").length,
-            notesLen: (lastNotesAnswer || "").length,
-            adjustment: difficultyAdjustment || "none",
-            chatModel: getSelectedChatModel() || "(default)"
-          });
-          chatPayloadBase = {
-            question: lastSingleQuestion,
-            notes_answer: lastNotesAnswer,
-            difficulty: $("exerciseDifficulty").value
-          };
-        }
+        logDebug("Exercise request start (chat mode)", {
+          turns: chatHistory.length,
+          adjustment: difficultyAdjustment || "none",
+          chatModel: getSelectedChatModel() || "(default)"
+        });
+        var chatPayloadBase = {
+          conversation_context: buildConversationContext(),
+          difficulty: $("exerciseDifficulty").value
+        };
 
         if (difficultyAdjustment) {
           chatPayloadBase.difficulty_adjustment = difficultyAdjustment;
@@ -2248,7 +1910,7 @@
         }
         logDebug("Exercise response", responseDebugInfo(response));
 
-        var targetEl = isChatMode ? "rightExerciseContent" : "exerciseContent";
+        var targetEl = "rightExerciseContent";
 
         await readEventStream(response, function (event, data) {
           if (event === "meta") {
@@ -2297,27 +1959,22 @@
         await typesetMath();
         setStatus("Exercise ready. Preparing answer key...");
 
-        if (isChatMode) {
-          $("rightAnswerInputArea").classList.add("visible");
-          if (shouldReplace && activeExerciseIndex >= 0 && activeExerciseIndex < exercises.length) {
-            var prob = exercises[activeExerciseIndex];
-            prob.problem = currentExerciseRaw;
-            prob.generated_answer = "";
-            prob.student_answer = "";
-            prob.assessment = "";
-            prob.generated_answer_shown = false;
-            prob.answer_shown = false;
-            prob.messages = [];
-            prob.hint_level = 0;
-            renderActiveExercise();
-          } else {
-            addExercise(currentExerciseRaw);
-          }
-          await calculateRightExerciseAnswer();
+        $("rightAnswerInputArea").classList.add("visible");
+        if (shouldReplace && activeExerciseIndex >= 0 && activeExerciseIndex < exercises.length) {
+          var prob = exercises[activeExerciseIndex];
+          prob.problem = currentExerciseRaw;
+          prob.generated_answer = "";
+          prob.student_answer = "";
+          prob.assessment = "";
+          prob.generated_answer_shown = false;
+          prob.answer_shown = false;
+          prob.messages = [];
+          prob.hint_level = 0;
+          renderActiveExercise();
         } else {
-          $("answerInputArea").classList.add("visible");
-          await calculateExerciseAnswer();
+          addExercise(currentExerciseRaw);
         }
+        await calculateRightExerciseAnswer();
 
       } catch (e) {
         logDebug("Exercise request failed", { error: String(e) });
@@ -2325,45 +1982,18 @@
         setStatus("Error");
       } finally {
         $("exerciseBtn").disabled = false;
-        $("newExerciseBtn").disabled = false;
       }
-    }
-
-    async function calculateExerciseAnswer() {
-      await _calculateAnswerCore(
-        { problem: currentExerciseRaw, topic_question: lastSingleQuestion, notes_answer: lastNotesAnswer },
-        "submitAnswerBtn", "showAnswerBtn", "single mode"
-      );
-    }
-
-    // Answer assessment
-    async function submitAnswer() {
-      setError("");
-      var studentAnswer = $("studentAnswer").value.trim();
-      if (!studentAnswer) { setError("Please enter your answer."); return; }
-      if (!currentGeneratedAnswerRaw.trim()) { setError("The generated answer is not ready yet. Please wait a moment."); return; }
-      await _submitAssessCore(studentAnswer, "assessmentTitle", "assessmentBox", "submitAnswerBtn", "single mode");
     }
 
     // Main ask function
     async function ask() {
       setError("");
       rawNotes = "";
-      rawExtra = "";
       currentExerciseRaw = "";
       currentGeneratedAnswerRaw = "";
-      currentHintLevel = 0;
-      resetGeneratedAnswerUI();
-      resetAssessmentUI();
 
       var welcome = $("welcome");
       if (welcome) welcome.style.display = "none";
-
-      // Hide exercise section when asking new question
-      $("exerciseSection").style.display = "none";
-      $("exerciseSection").classList.remove("visible");
-      $("submitAnswerBtn").disabled = false;
-      $("newExerciseBtn").disabled = false;
 
       var question = $("q").value.trim();
       var questionTime = Date.now();
@@ -2372,8 +2002,8 @@
         return;
       }
 
-      // Check turn limit in chat mode
-      if (isChatMode && chatHistory.length >= MAX_TURNS) {
+      // Check turn limit
+      if (chatHistory.length >= MAX_TURNS) {
         setError("Conversation limit reached (" + MAX_TURNS + " turns). Click 'New conversation' to start fresh.");
         return;
       }
@@ -2386,35 +2016,17 @@
       var payload = applySelectedCourse(applySelectedChatModel({
         question: question,
         extra_mode: $("extraMode").value,
-        chat_mode: isChatMode,
-        history: isChatMode ? chatHistory : []
+        history: chatHistory
       }));
 
       $("askBtn").disabled = true;
-
-      if (!isChatMode) {
-        lastSingleQuestion = question;
-        renderSinglePrompt(question);
-      }
-
       $("q").value = "";
 
-      if (isChatMode) {
-        addStreamingBubbles(question);
-        setStatus("Thinking…");
-      } else {
-        $("notes").innerHTML = "";
-        $("extra").innerHTML = "";
-        $("extraBox").style.display = "none";
-        $("cov").style.display = "none";
-        $("sources").innerHTML = "";
-        showThinking("notes");
-        setStatus("Thinking…");
-      }
+      addStreamingBubbles(question);
+      setStatus("Thinking…");
       try {
         logDebug("Ask request start", {
           questionLen: question.length,
-          chatMode: isChatMode,
           historyTurns: payload.history.length,
           extraMode: payload.extra_mode,
           chatModel: payload.chat_model || "(default)"
@@ -2440,42 +2052,26 @@
         });
 
         // Final render
-        if (isChatMode) {
-          chatHistory.push({
-            question: question,
-            answer: rawNotes,
-            coverage: streamCoverage,
-            createdAt: questionTime
-          });
-          finalizeStreamingBubble(streamCoverage);
-          autoSaveCurrentConversation();
-          // Show Exercise actions after first turn
-          $("exerciseActions").style.display = "flex";
-        } else {
-          $("notes").classList.remove("streaming-cursor");
-          $("extra").classList.remove("streaming-cursor");
-          $("notes").innerHTML = renderMarkdown(rawNotes);
-          if (rawExtra) {
-            $("extra").innerHTML = renderMarkdown(rawExtra);
-          }
-
-          // Store answer
-          lastNotesAnswer = rawNotes;
-        }
+        chatHistory.push({
+          question: question,
+          answer: rawNotes,
+          coverage: streamCoverage,
+          createdAt: questionTime
+        });
+        finalizeStreamingBubble(streamCoverage);
+        autoSaveCurrentConversation();
+        // Show Exercise actions after first turn
+        $("exerciseActions").style.display = "flex";
 
         await typesetMath();
         setStatus("Done.");
 
       } catch (e) {
-        logDebug("Ask request failed", { error: String(e), chatMode: isChatMode });
+        logDebug("Ask request failed", { error: String(e) });
         setError(String(e));
         setStatus("Error");
       } finally {
         $("askBtn").disabled = false;
-        if (!isChatMode) {
-          $("notes").classList.remove("streaming-cursor");
-          $("extra").classList.remove("streaming-cursor");
-        }
       }
     }
 
@@ -2489,45 +2085,21 @@
           logDebug("Ask stream status", data);
           if (data.phase === "thinking") {
             setStatus("Searching notes…");
-            if (!isChatMode) showThinking("notes");
           } else if (data.phase === "notes") {
             setStatus("Writing answer…");
-            if (!isChatMode) $("notes").innerHTML = "";
-            if (isChatMode) {
-              var target = document.getElementById("chatStreamTarget");
-              if (target) target.innerHTML = "";
-            }
-          } else if (data.phase === "extra") {
-            setStatus("Adding extra context…");
-            $("extraBox").style.display = "block";
-            $("extraBox").open = true;
-            showThinking("extra");
+            var target = document.getElementById("chatStreamTarget");
+            if (target) target.innerHTML = "";
           }
           break;
 
         case "sources":
           logDebug("Ask stream sources", { count: (data || []).length });
-          if (!isChatMode) {
-            renderSources(data);
-          }
           break;
 
         case "token":
           if (data.target === "notes") {
             rawNotes += data.content;
-            if (isChatMode) {
-              updateStreamingBubble(rawNotes);
-            } else {
-              scheduleRender("notes", rawNotes);
-            }
-          } else if (data.target === "extra") {
-            if (!isChatMode) {
-              if ($("extra").querySelector(".thinking")) {
-                $("extra").innerHTML = "";
-              }
-              rawExtra += data.content;
-              scheduleRender("extra", rawExtra);
-            }
+            updateStreamingBubble(rawNotes);
           }
           break;
 
@@ -2535,32 +2107,12 @@
           logDebug("Ask stream notes_done", { coverage: data.coverage, answerLen: (data.answer || "").length });
           if (data.answer) {
             rawNotes = data.answer;
-            if (isChatMode) {
-              updateStreamingBubble(rawNotes);
-            } else {
-              $("notes").innerHTML = renderMarkdown(rawNotes);
-            }
-          }
-          if (!isChatMode) {
-            $("notes").classList.remove("streaming-cursor");
-            if (data.coverage) {
-              $("cov").textContent = "coverage: " + data.coverage;
-              $("cov").style.display = "inline-block";
-            }
+            updateStreamingBubble(rawNotes);
           }
           break;
 
         case "extra_done":
           logDebug("Ask stream extra_done", { answerLen: (data.answer || "").length });
-          if (data.answer) {
-            rawExtra = data.answer;
-            if (!isChatMode) {
-              $("extra").innerHTML = renderMarkdown(rawExtra);
-            }
-          }
-          if (!isChatMode) {
-            $("extra").classList.remove("streaming-cursor");
-          }
           break;
 
         case "error":
@@ -2575,7 +2127,7 @@
 
     function boot() {
       setStatus("UI ready");
-      resetGeneratedAnswerUI();
+      resetRightSidebarExerciseUI();
       loadChatModels();
       loadCourses();
       $("askBtn").addEventListener("click", ask);
@@ -2597,7 +2149,6 @@
         logDebug("Course changed", { course: getSelectedCourse() || "all" });
       });
 
-      switchMode(true); // always chat mode
       renderSidebar();
       $("newConvBtn").addEventListener("click", startNewConversation);
 
@@ -2714,18 +2265,8 @@
       // Exercise generation
       $("exerciseBtn").addEventListener("click", function () { generateExercise(); });
 
-      // New exercise button (single mode)
-      $("newExerciseBtn").addEventListener("click", function () { generateExercise(); });
-
-      // Reveal generated answer (single mode)
-      $("showAnswerBtn").addEventListener("click", toggleGeneratedAnswer);
-
-      // Submit answer for assessment (single mode)
-      $("submitAnswerBtn").addEventListener("click", submitAnswer);
-
       // Hint buttons
-      $("hintBtn").addEventListener("click", function () { requestHint(); });
-      $("rightHintBtn").addEventListener("click", function () { requestHint(true); });
+      $("rightHintBtn").addEventListener("click", function () { requestHint(); });
 
       // Right sidebar event listeners
       $("rightSidebarToggle").addEventListener("click", function () {
@@ -2837,11 +2378,6 @@
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendRightChatMessage(); }
       });
 
-
-      // Enter in answer field submits
-      $("studentAnswer").addEventListener("keydown", function (e) {
-        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") submitAnswer();
-      });
 
       window.addEventListener("resize", function () {
         syncLeftTogglePosition();

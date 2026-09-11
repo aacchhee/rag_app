@@ -1508,13 +1508,6 @@ code {
   color: var(--disabled-text);
 }
 
-/* Single-question view */
-#singleView {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 /* Cite superscript */
 .cite {
   width: 17px;
@@ -1535,15 +1528,6 @@ code {
 /* Exercise section */
 .exercise-btn {
   display: none;
-}
-
-.exercise-section {
-  margin-top: 14px;
-  display: none;
-}
-
-.exercise-section.visible {
-  display: block;
 }
 
 .box-title {
