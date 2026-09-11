@@ -1254,10 +1254,6 @@ code {
 /* Chat conversation view */
 .chat-container {
   margin-top: 16px;
-  display: none;
-}
-
-.chat-container.visible {
   display: block;
 }
 

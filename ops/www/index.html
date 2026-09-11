@@ -115,7 +115,7 @@
           </div>
 
           <div class="controls-row">
-            <label id="extraModeLabel">
+            <label id="extraModeLabel" style="display:none;">
               Extra:
               <select id="extraMode">
                 <option value="auto" selected>auto</option>
@@ -2015,7 +2015,7 @@
 
       var payload = applySelectedCourse(applySelectedChatModel({
         question: question,
-        extra_mode: $("extraMode").value,
+        chat_mode: true,
         history: chatHistory
       }));
 
@@ -2028,7 +2028,6 @@
         logDebug("Ask request start", {
           questionLen: question.length,
           historyTurns: payload.history.length,
-          extraMode: payload.extra_mode,
           chatModel: payload.chat_model || "(default)"
         });
         var response = await fetch("/rag2/ask-stream", {
