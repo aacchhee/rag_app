@@ -2180,19 +2180,58 @@
         $("userMenuDropdown").classList.toggle("open");
       });
 
+      // Settings modal focus trap
+      var _settingsTriggerEl = null;
+      var _settingsFocusables = "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])";
+
+      function _trapSettingsFocus(e) {
+        if (e.key !== "Tab") return;
+        var modal = $("settingsModal");
+        var focusable = Array.prototype.slice.call(modal.querySelectorAll(_settingsFocusables)).filter(function (el) {
+          return el.offsetParent !== null && !el.disabled;
+        });
+        if (focusable.length === 0) { e.preventDefault(); return; }
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault(); last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault(); first.focus();
+        }
+      }
+
+      function openSettingsModal(triggerEl) {
+        _settingsTriggerEl = triggerEl || document.activeElement;
+        $("settingsOverlay").style.display = "flex";
+        var focusable = $("settingsModal").querySelectorAll(_settingsFocusables);
+        for (var i = 0; i < focusable.length; i++) {
+          if (focusable[i].offsetParent !== null && !focusable[i].disabled) {
+            focusable[i].focus(); break;
+          }
+        }
+        document.addEventListener("keydown", _onSettingsKeydown);
+      }
+
+      function closeSettingsModal() {
+        $("settingsOverlay").style.display = "none";
+        document.removeEventListener("keydown", _onSettingsKeydown);
+        if (_settingsTriggerEl) { _settingsTriggerEl.focus(); _settingsTriggerEl = null; }
+      }
+
+      function _onSettingsKeydown(e) {
+        if (e.key === "Escape") { e.preventDefault(); closeSettingsModal(); return; }
+        _trapSettingsFocus(e);
+      }
+
       $("userMenuSettingsBtn").addEventListener("click", function () {
         $("userMenuDropdown").classList.remove("open");
-        $("settingsOverlay").style.display = "flex";
+        openSettingsModal(this);
       });
 
-      $("settingsCloseBtn").addEventListener("click", function () {
-        $("settingsOverlay").style.display = "none";
-      });
+      $("settingsCloseBtn").addEventListener("click", closeSettingsModal);
 
       $("settingsOverlay").addEventListener("click", function (e) {
-        if (e.target === $("settingsOverlay")) {
-          $("settingsOverlay").style.display = "none";
-        }
+        if (e.target === $("settingsOverlay")) closeSettingsModal();
       });
 
       // Settings modal tab switching
