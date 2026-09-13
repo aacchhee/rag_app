@@ -71,7 +71,7 @@
 
     <div class="card">
       <div class="topbar">
-        <span id="status" class="muted"></span>
+        <span id="status" class="muted" aria-live="polite"></span>
       </div>
 
       <div class="chat-main">
@@ -142,7 +142,7 @@
         </div>
       </div>
 
-      <div id="err" class="err"></div>
+      <div id="err" class="err" aria-live="assertive"></div>
     </div>
 
     <!-- Right sidebar: practice exercise (chat mode) -->
@@ -1556,7 +1556,7 @@
           '<div class="assistant-avatar" aria-hidden="true">RAG</div>' +
           '<div class="assistant-body">' +
             '<div class="assistant-label">Assistant <span>&middot;</span> <small>based on your materials</small></div>' +
-            '<div class="chat-bubble-content streaming-cursor" id="chatStreamTarget">' +
+            '<div class="chat-bubble-content streaming-cursor" id="chatStreamTarget" aria-live="polite" aria-atomic="false">' +
               '<div class="thinking">' +
                 '<div class="thinking-dots"><span></span><span></span><span></span></div>' +
                 ' Thinking…' +
@@ -1810,6 +1810,8 @@
       if (target) {
         target.classList.remove("streaming-cursor");
         target.removeAttribute("id");
+        target.removeAttribute("aria-live");
+        target.removeAttribute("aria-atomic");
 
         if (coverage) {
           var metaDiv = document.createElement("div");
@@ -1999,6 +2001,7 @@
       var questionTime = Date.now();
       if (!question) {
         setError("Please enter a question.");
+        $("q").focus();
         return;
       }
 
