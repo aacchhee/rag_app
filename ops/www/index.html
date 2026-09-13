@@ -54,6 +54,9 @@
           <button class="new-conv-btn" id="newConvBtn" type="button">New</button>
         </div>
       </div>
+      <div class="conv-search-wrap">
+        <input type="text" id="convSearch" class="conv-search" placeholder="Search conversations…" aria-label="Search conversations">
+      </div>
       <ul class="conversations-list" id="conversationsList"></ul>
       <div class="sidebar-user-group">
         <div class="user-menu-dropdown" id="userMenuDropdown">
@@ -512,6 +515,7 @@
     function renderSidebar() {
       var listEl = $("conversationsList");
       var ids = listConversationIds();
+      var query = (("convSearch" in window) ? $("convSearch").value : "").trim().toLowerCase();
       listEl.innerHTML = "";
       if (!ids.length) {
         var empty = document.createElement("div");
@@ -520,10 +524,13 @@
         listEl.appendChild(empty);
         return;
       }
+      var visible = 0;
       for (var i = 0; i < ids.length; i++) {
         var id = ids[i];
         var conv = loadConversation(id);
         var title = conv && conv.title ? conv.title : "Conversation";
+        if (query && title.toLowerCase().indexOf(query) === -1) continue;
+        visible++;
         var li = document.createElement("li");
         li.setAttribute("tabindex", "0");
         li.setAttribute("role", "button");
@@ -563,6 +570,12 @@
         li.appendChild(span);
         li.appendChild(menuBtn);
         listEl.appendChild(li);
+      }
+      if (visible === 0) {
+        var noMatch = document.createElement("div");
+        noMatch.className = "sidebar-empty";
+        noMatch.textContent = "No matches";
+        listEl.appendChild(noMatch);
       }
     }
 
@@ -2152,6 +2165,7 @@
       });
 
       renderSidebar();
+      $("convSearch").addEventListener("input", renderSidebar);
       $("newConvBtn").addEventListener("click", startNewConversation);
 
       $("importBtn").addEventListener("click", function () {
