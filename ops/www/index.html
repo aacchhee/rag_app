@@ -48,7 +48,7 @@
 <body>
   <div class="wrap">
     <!-- Left sidebar: conversations -->
-    <div class="sidebar" id="sidebar">
+    <nav class="sidebar" id="sidebar" aria-label="Conversations">
       <h1 class="sidebar-title">IMF GPT</h1>
       <div class="sidebar-header">
         <h2>Chats</h2>
@@ -76,7 +76,7 @@
     </div>
     <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Toggle sidebar">◀</button>
 
-    <div class="card">
+    <main class="card">
       <div class="topbar">
         <span id="status" class="muted" aria-live="polite"></span>
       </div>
@@ -157,7 +157,7 @@
       </div>
 
       <div id="err" class="err" aria-live="assertive"></div>
-    </div>
+    </main>
 
     <!-- Right sidebar: practice exercise (chat mode) -->
     <div class="right-sidebar collapsed" id="rightSidebar">
