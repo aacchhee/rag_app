@@ -876,7 +876,7 @@
       truncWrap.classList.remove("expanded");
       truncWrap.classList.remove("overflowing");
       $("rightAnswerInputArea").classList.add("visible");
-      $("rightStudentAnswer").value = "";
+      $("rightStudentAnswer").value = prob.student_answer || "";
 
       // Migrate old generated_answer_shown to new answer_shown
       if (typeof prob.answer_shown === "undefined") {
@@ -2450,6 +2450,12 @@
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendRightChatMessage(); }
       });
 
+      $("rightStudentAnswer").addEventListener("input", function () {
+        if (activeExerciseIndex >= 0 && activeExerciseIndex < exercises.length) {
+          exercises[activeExerciseIndex].student_answer = $("rightStudentAnswer").value;
+          if (currentConvId) autoSaveCurrentConversation();
+        }
+      });
 
       window.addEventListener("resize", function () {
         syncLeftTogglePosition();
