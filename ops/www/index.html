@@ -2186,6 +2186,13 @@
       loadChatModels();
       loadCourses();
       $("askBtn").addEventListener("click", ask);
+      function syncAskBtnState() {
+        var btn = $("askBtn");
+        if (!btn) return;
+        btn.disabled = !( $("q").value || "" ).trim();
+      }
+      syncAskBtnState();
+      $("q").addEventListener("input", syncAskBtnState);
       $("q").addEventListener("keydown", function (e) {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
