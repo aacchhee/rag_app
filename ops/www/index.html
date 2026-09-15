@@ -85,9 +85,16 @@
         <div class="messages-area" id="messagesArea">
           <div class="messages-inner">
           <div id="welcome" style="display:flex; align-items:center; justify-content:center; flex:1; height:100%;">
-            <div style="text-align:center; color:var(--welcome-text);">
-              <div style="font-size:38px; margin-bottom:12px;">📏</div>
-              <div style="font-size:18px; font-weight:500;">Let's math!</div>
+            <div class="welcome-content">
+              <h2 class="welcome-title">Learn from your course materials</h2>
+              <p class="welcome-subtitle">Ask questions, get step-by-step help, and generate practice problems based on your notes.</p>
+              <div class="welcome-actions">
+                <button class="welcome-action-btn" type="button" data-starter="Explain the concept of ">Explain a concept</button>
+                <button class="welcome-action-btn" type="button" data-starter="Show me an example of ">Show an example</button>
+                <button class="welcome-action-btn" type="button" data-starter="What does ... mean in the context of ">Clarify notation</button>
+                <button class="welcome-action-btn" type="button" data-starter="Compare ">Compare concepts</button>
+              </div>
+              <p class="welcome-footer">Chats are saved locally. Answers cite your course materials.</p>
             </div>
           </div>
 
@@ -2455,6 +2462,17 @@
           exercises[activeExerciseIndex].student_answer = $("rightStudentAnswer").value;
           if (currentConvId) autoSaveCurrentConversation();
         }
+      });
+
+      // Welcome state starter buttons
+      document.addEventListener("click", function (e) {
+        var btn = e.target.closest(".welcome-action-btn");
+        if (!btn) return;
+        var starter = btn.getAttribute("data-starter");
+        if (!starter) return;
+        $("q").value = starter;
+        $("q").focus();
+        $("welcome").style.display = "none";
       });
 
       window.addEventListener("resize", function () {
