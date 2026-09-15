@@ -205,8 +205,21 @@
   <script>
     function $(id) { return document.getElementById(id); }
     function setStatus(msg) { $("status").textContent = msg || ""; }
+
+    var _toastTimer = null;
+    function showToast(msg) {
+      var el = $("toast");
+      if (!el) return;
+      el.textContent = msg || "";
+      if (!msg) { el.classList.remove("show"); return; }
+      el.classList.add("show");
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(function () { el.classList.remove("show"); }, 4000);
+    }
+
     function setError(msg) {
       $("err").textContent = msg || "";
+      showToast(msg);
       if (msg) logDebug("UI error", { message: String(msg) });
     }
 
@@ -2460,6 +2473,8 @@
       boot();
     }
   </script>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <!-- Settings Modal -->
   <div class="modal-overlay" id="settingsOverlay" style="display:none;">
