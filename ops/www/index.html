@@ -188,6 +188,7 @@
       <!-- Sticky input area at bottom of right sidebar -->
       <div class="right-sidebar-input">
         <div id="rightAnswerInputArea" class="answer-input-area">
+          <div id="rightLive" aria-live="polite" aria-atomic="true" class="sr-only" style="position:absolute; left:-9999px;"></div>
           <div class="composer">
             <textarea id="rightStudentAnswer" class="answer-input"
               placeholder="Ask about this exercise or enter your answer…" rows="1"></textarea>
@@ -232,6 +233,19 @@
       $("err").textContent = msg || "";
       showToast(msg);
       if (msg) logDebug("UI error", { message: String(msg) });
+    }
+
+    function _announceRight(msg) {
+      var el = $("rightLive");
+      if (!el) return;
+      el.textContent = "";
+      if (!msg) return;
+      requestAnimationFrame(function () { el.textContent = msg; });
+    }
+
+    function setRightError(msg) {
+      setError(msg);
+      _announceRight(msg);
     }
 
     function debugStamp() {
@@ -1205,8 +1219,8 @@
     async function submitRightAnswer() {
       setError("");
       var studentAnswer = $("rightStudentAnswer").value.trim();
-      if (!studentAnswer) { setError("Please enter your answer."); return; }
-      if (!currentGeneratedAnswerRaw.trim()) { setError("The generated answer is not ready yet. Please wait a moment."); return; }
+      if (!studentAnswer) { setRightError("Please enter your answer."); return; }
+      if (!currentGeneratedAnswerRaw.trim()) { setRightError("The generated answer is not ready yet. Please wait a moment."); return; }
 
       var prob = exercises[activeExerciseIndex];
       if (!prob || !Array.isArray(prob.messages)) return;
@@ -1341,7 +1355,7 @@
       if (!exerciseText) return;
 
       var studentApproach = $("rightStudentAnswer").value.trim();
-      if (!studentApproach) { setError("Please describe your approach first."); return; }
+      if (!studentApproach) { setRightError("Please describe your approach first."); return; }
 
       var prob = exercises[activeExerciseIndex];
       if (!prob || !Array.isArray(prob.messages)) return;
@@ -1997,6 +2011,7 @@
 
         await typesetMath();
         setStatus("Exercise ready. Preparing answer key...");
+        _announceRight("Exercise generated. Preparing answer key.");
 
         $("rightAnswerInputArea").classList.add("visible");
         if (shouldReplace && activeExerciseIndex >= 0 && activeExerciseIndex < exercises.length) {
