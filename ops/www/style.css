@@ -784,6 +784,11 @@ select {
   position: relative;
 }
 
+/* Widened while the student works on an exercise ("Discuss Exercise") */
+.right-sidebar.focused {
+  width: calc((100vw - var(--ls-width) - 16px) * 0.65);
+}
+
 .resize-grip {
   position: absolute;
   left: 0;
@@ -1141,7 +1146,8 @@ code {
 .topbar {
   height: 56px;
   flex: 0 0 56px;
-  padding: 0 34px;
+  /* Right padding keeps the status clear of the fixed right-sidebar toggle */
+  padding: 0 60px 0 34px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -1620,9 +1626,8 @@ details > summary.box-title {
 
 .exercise-box {
   border: 1px solid var(--task-line);
-  border-bottom: none;
-  border-radius: 17px 17px 0 0;
-  padding: 20px 24px 0;
+  border-radius: 17px;
+  padding: 20px 24px;
   background: var(--task-bg);
   box-shadow: var(--exercise-box-shadow);
   overflow: hidden;
@@ -1652,71 +1657,6 @@ details > summary.box-title {
 
 .exercise-box strong {
   font-weight: 650;
-}
-
-/* Truncated exercise wrapper */
-.exercise-truncated {
-  position: relative;
-  overflow: hidden;
-  max-height: 70px;
-  transition: max-height 0.35s ease;
-}
-
-.exercise-truncated.expanded {
-  max-height: none;
-}
-
-.exercise-gradient-mask {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 60px;
-  background: linear-gradient(to bottom, transparent, var(--bg));
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-
-.exercise-truncated.expanded .exercise-gradient-mask {
-  opacity: 0;
-}
-
-.exercise-toggle-box {
-  display: none;
-  align-items: center;
-  justify-content: flex-start;
-  min-height: 38px;
-  padding: 0 24px;
-  border: 1px solid var(--task-line);
-  border-top: none;
-  border-radius: 0 0 17px 17px;
-  background: var(--task-bg);
-  margin-top: 0;
-}
-
-.exercise-truncated.overflowing:not(.expanded) + .exercise-toggle-box,
-.exercise-truncated.expanded + .exercise-toggle-box {
-  display: flex;
-}
-
-.exercise-expand-btn {
-  display: inline-flex;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  background: none;
-  color: var(--green);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  align-items: center;
-  gap: 4px;
-  position: static;
-}
-
-.exercise-expand-btn:hover {
-  color: var(--green-2);
 }
 
 /* Right sidebar chat scroll area */
@@ -1795,10 +1735,6 @@ details > summary.box-title {
 
 .answer-reveal-body p:last-child {
   margin-bottom: 0;
-}
-
-.exercise-truncated.expanded .exercise-gradient-mask {
-  opacity: 0;
 }
 
 .answer-input-area {
@@ -2159,22 +2095,45 @@ details > summary.box-title {
   border: 1px solid var(--exercise-bubble-border);
 }
 
-.exercise-bubble .exercise-full {
+.exercise-bubble .exercise-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--task-text);
+  margin-bottom: 6px;
+}
+
+/* Two-line teaser of the exercise; the full text is in the right sidebar */
+.exercise-bubble .exercise-preview {
   color: var(--task-text);
   background: var(--exercise-full-bg);
   border-radius: 11px;
-  padding: 14px 16px;
-  font-size: 15px;
-  line-height: 1.65;
+  /* Bottom spacing is a border, not padding: overflow is clipped at the
+     padding edge, so padding would let a third line show through */
+  padding: 10px 14px 0;
+  border-bottom: 10px solid var(--exercise-full-bg);
+  font-size: 14px;
+  line-height: 1.6;
   margin-bottom: 12px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 
-.exercise-bubble .exercise-full p {
-  margin: 0 0 8px;
+.exercise-bubble .exercise-preview > * {
+  display: inline;
+  margin: 0;
 }
 
-.exercise-bubble .exercise-full p:last-child {
-  margin-bottom: 0;
+.exercise-bubble .exercise-preview > * + *::before {
+  content: " ";
+}
+
+/* Keep display math on the teaser line instead of breaking the clamp */
+.exercise-bubble .exercise-preview mjx-container[display="true"] {
+  display: inline !important;
+  margin: 0 !important;
 }
 
 .exercise-bubble .exercise-card-btn {

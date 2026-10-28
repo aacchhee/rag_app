@@ -171,14 +171,8 @@
           Click "Exercise" to generate a practice exercise from this conversation.
         </div>
         <div id="rightExerciseArea" style="display:none;">
-          <!-- Exercise problem with show more/less -->
-          <div id="rightExerciseWrapper" class="exercise-truncated">
-            <div id="rightExerciseContent" class="exercise-box"></div>
-            <div class="exercise-gradient-mask"></div>
-          </div>
-          <div id="rightExerciseToggleBox" class="exercise-toggle-box">
-            <button id="rightExerciseExpandBtn" class="exercise-expand-btn" type="button">Show more</button>
-          </div>
+          <!-- Exercise problem, always shown in full -->
+          <div id="rightExerciseContent" class="exercise-box"></div>
 
           <!-- Chat scroll area -->
           <div class="right-chat-scroll" id="rightChatScroll"></div>
@@ -851,13 +845,48 @@
       tick();
     }
 
+    // True while the conversation list is hidden because an exercise has focus
+    var leftSidebarAutoCollapsed = false;
+
+    var MAIN_PLACEHOLDER = "Ask something… (math is OK)";
+    var MAIN_PLACEHOLDER_EXERCISE = "Ask a general question…";
+
     function openRightSidebar() {
-      $("rightSidebar").classList.remove("collapsed");
+      var sidebar = $("rightSidebar");
+      sidebar.classList.remove("collapsed");
+      // Give the exercise the larger share so it reads as the main focus
+      sidebar.style.width = "";
+      sidebar.classList.add("focused");
+      $("q").placeholder = MAIN_PLACEHOLDER_EXERCISE;
+      // Hide the conversation list to free up room (via its toggle, so state stays in sync)
+      if (!$("sidebar").classList.contains("collapsed")) {
+        $("sidebarToggle").click();
+        leftSidebarAutoCollapsed = true;
+      }
+      animateSync(syncRightTogglePosition);
+    }
+
+    function restoreLeftSidebar() {
+      $("q").placeholder = MAIN_PLACEHOLDER;
+      if (leftSidebarAutoCollapsed && $("sidebar").classList.contains("collapsed")) {
+        $("sidebarToggle").click();
+      }
+      leftSidebarAutoCollapsed = false;
+    }
+
+    // Back to the normal layout, e.g. when the student returns to the main chat
+    function unfocusRightSidebar() {
+      var sidebar = $("rightSidebar");
+      if (!sidebar.classList.contains("focused")) return;
+      sidebar.classList.remove("focused");
+      restoreLeftSidebar();
       animateSync(syncRightTogglePosition);
     }
 
     function closeRightSidebar() {
       var sidebar = $("rightSidebar");
+      sidebar.classList.remove("focused");
+      restoreLeftSidebar();
       sidebar.classList.add("collapsed");
       sidebar.style.width = "";
       animateSync(syncRightTogglePosition);
@@ -893,10 +922,6 @@
       $("rightExerciseContent").innerHTML = renderMarkdown(currentExerciseRaw);
       $("rightExerciseContent").classList.remove("streaming-cursor");
 
-      // Reset truncation wrapper
-      var truncWrap = $("rightExerciseWrapper");
-      truncWrap.classList.remove("expanded");
-      truncWrap.classList.remove("overflowing");
       $("rightAnswerInputArea").classList.add("visible");
       $("rightStudentAnswer").value = prob.student_answer || "";
 
@@ -920,7 +945,6 @@
 
       typesetMath();
       renderChatConversation();
-      setTimeout(checkExerciseOverflow, 100);
     }
 
     // Right sidebar exercise chat rendering
@@ -1000,19 +1024,6 @@
       });
       renderRightChat();
       if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
-    }
-
-    function checkExerciseOverflow() {
-      var wrap = $("rightExerciseWrapper");
-      var btn = $("rightExerciseExpandBtn");
-      if (!wrap || !btn) return;
-      var enabled = wrap.scrollHeight > wrap.clientHeight + 2;
-      if (enabled) {
-        wrap.classList.add("overflowing");
-      } else {
-        wrap.classList.remove("overflowing");
-        wrap.classList.add("expanded");
-      }
     }
 
     function _isActiveExerciseEngaged() {
@@ -1558,8 +1569,9 @@
           html += '<div class="assistant-body">';
           html += '<div class="assistant-label">Assistant <span>&middot;</span> <small>generated exercise</small></div>';
           html += '<div class="chat-bubble-content">';
-          // Full rendered exercise
-          html += '<div class="exercise-full">' + renderMarkdown(prob.problem) + '</div>';
+          // Compact title card; the full exercise lives in the right sidebar
+          html += '<div class="exercise-title">📝 Exercise ' + (item.index + 1) + '</div>';
+          html += '<div class="exercise-preview">' + renderMarkdown(prob.problem) + '</div>';
           html += '<div class="exercise-card-actions">';
           html += '<div class="exercise-adjust-row">';
           html += '<span class="exercise-adjust-title">Adjust exercise</span>';
@@ -1913,6 +1925,8 @@
 
       var shouldReplace = difficultyAdjustment && difficultyAdjustment !== "" && !_isActiveExerciseEngaged();
 
+      // The chat only shows a compact card, so stream the exercise where it can be read
+      openRightSidebar();
       $("rightSidebarWelcome").style.display = "none";
       $("rightExerciseArea").style.display = "block";
       $("rightExerciseContent").style.display = "block";
@@ -2354,7 +2368,9 @@
         toggle.style.left = (rect.right + 8) + "px";
       }
 
-      $("sidebarToggle").addEventListener("click", function () {
+      $("sidebarToggle").addEventListener("click", function (e) {
+        // A real click by the student means they've taken over the layout
+        if (e.isTrusted) leftSidebarAutoCollapsed = false;
         $("sidebar").classList.toggle("collapsed");
         $("sidebarToggle").textContent = $("sidebar").classList.contains("collapsed") ? "▶" : "◀";
         syncLeftSidebarVar();
@@ -2373,6 +2389,8 @@
       // Right sidebar event listeners
       $("rightSidebarToggle").addEventListener("click", function () {
         $("rightSidebar").classList.toggle("collapsed");
+        $("rightSidebar").classList.remove("focused");
+        if ($("rightSidebar").classList.contains("collapsed")) restoreLeftSidebar();
         $("rightSidebarToggle").textContent = $("rightSidebar").classList.contains("collapsed") ? "◀" : "▶";
         // Clear stale inline width when expanding so default width applies;
         // also sync toggle position
@@ -2392,6 +2410,7 @@
 
         grip.addEventListener("mousedown", function (e) {
           if (sidebar.classList.contains("collapsed")) return;
+          sidebar.classList.remove("focused"); // manual width takes over
           isDragging = true;
           startX = e.clientX;
           startWidth = sidebar.getBoundingClientRect().width;
@@ -2419,13 +2438,6 @@
       })();
 
       $("rightShowAnswerBtn").addEventListener("click", toggleRightGeneratedAnswer);
-
-      // Toggle expand/collapse on right sidebar
-      $("rightExerciseExpandBtn").addEventListener("click", function () {
-        var wrap = $("rightExerciseWrapper");
-        wrap.classList.toggle("expanded");
-        this.textContent = wrap.classList.contains("expanded") ? "Show less" : "Show more";
-      });
 
       // Click on exercise cards in chat to open them in right sidebar
       document.addEventListener("click", function (e) {
@@ -2475,6 +2487,8 @@
       $("rightExplainQuestionBtn").addEventListener("click", explainRightQuestion);
 
       $("rightAnswerSendBtn").addEventListener("click", sendRightChatMessage);
+
+      $("q").addEventListener("focus", unfocusRightSidebar);
 
       $("rightStudentAnswer").addEventListener("keydown", function (e) {
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendRightChatMessage(); }
