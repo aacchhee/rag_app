@@ -37,6 +37,18 @@
   --danger: #b00020;
   --danger-bg: #ffebee;
   --focus-ring: rgba(63, 111, 82, .08);
+
+  /* Python syntax colors (code cell) */
+  --code-keyword: #8a3ab9;
+  --code-def: #1d5fa8;
+  --code-builtin: #0e7480;
+  --code-string: #2f7d32;
+  --code-number: #b35900;
+  --code-comment: #686d74;
+  --code-gutter-text: #9aa09c;
+  --code-cursor: #194f3b;
+  --code-selection: rgba(25, 79, 59, .14);
+  --code-bracket: rgba(25, 79, 59, .18);
   --focus-border: #8fa995;
 
   --dropdown-bg: #fff;
@@ -156,6 +168,17 @@
   --danger: #ff5c7c;
   --danger-bg: #4a1a24;
   --focus-ring: rgba(111, 180, 140, .15);
+
+  --code-keyword: #d19bf0;
+  --code-def: #7fb8f5;
+  --code-builtin: #5fd0d8;
+  --code-string: #9ad48a;
+  --code-number: #f0a86b;
+  --code-comment: #8b938e;
+  --code-gutter-text: #66706a;
+  --code-cursor: #5abf89;
+  --code-selection: rgba(90, 191, 137, .22);
+  --code-bracket: rgba(90, 191, 137, .28);
   --focus-border: #6b8f76;
 
   --dropdown-bg: #252b27;
@@ -2337,6 +2360,51 @@ details > summary.box-title {
   outline-offset: -2px;
   box-shadow: none;
 }
+
+/* CodeMirror editor replacing .py-code once loaded */
+.py-cell .CodeMirror {
+  height: auto;
+  background: var(--surface);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.py-cell .CodeMirror-scroll {
+  min-height: 120px;
+  max-height: 520px;
+}
+
+.py-cell .CodeMirror-focused {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+}
+
+.py-cell .CodeMirror-gutters {
+  background: var(--surface);
+  border-right: 1px solid var(--task-line);
+}
+
+.py-cell .CodeMirror-linenumber { color: var(--code-gutter-text); }
+.py-cell .CodeMirror-cursor { border-left-color: var(--code-cursor); }
+.py-cell .CodeMirror-selected,
+.py-cell .CodeMirror-focused .CodeMirror-selected { background: var(--code-selection); }
+.py-cell .CodeMirror-matchingbracket { background: var(--code-bracket); color: inherit !important; }
+
+.py-cell .cm-keyword { color: var(--code-keyword); }
+.py-cell .cm-def { color: var(--code-def); }
+.py-cell .cm-builtin { color: var(--code-builtin); }
+.py-cell .cm-string,
+.py-cell .cm-string-2 { color: var(--code-string); }
+.py-cell .cm-number { color: var(--code-number); }
+.py-cell .cm-comment { color: var(--code-comment); font-style: italic; }
+.py-cell .cm-variable,
+.py-cell .cm-variable-2,
+.py-cell .cm-property,
+.py-cell .cm-operator,
+.py-cell .cm-punctuation { color: var(--text); }
+.py-cell .cm-meta { color: var(--code-builtin); }
 
 .py-output {
   max-height: 360px;

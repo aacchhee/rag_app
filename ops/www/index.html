@@ -1061,10 +1061,108 @@
       out.scrollTop = out.scrollHeight;
     }
 
+    // Editor: CodeMirror (colors, line numbers, auto-indent) loaded on first use.
+    // The plain #pyCode textarea stays as the fallback if the CDN can't be reached.
+    var CODEMIRROR_BASE = "https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/";
+    var pyEditor = null;
+    var pyEditorLoading = null;
+    var pyTabEscapes = false; // after Esc, Tab leaves the editor (keyboard users)
+
+    function loadScript(src) {
+      return new Promise(function (resolve, reject) {
+        var s = document.createElement("script");
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = function () { reject(new Error("Failed to load " + src)); };
+        document.head.appendChild(s);
+      });
+    }
+
+    function ensurePyEditor() {
+      if (pyEditorLoading) return pyEditorLoading;
+      // Before our stylesheet, so the theme overrides in style.css win
+      var css = document.createElement("link");
+      css.rel = "stylesheet";
+      css.href = CODEMIRROR_BASE + "codemirror.min.css";
+      document.head.insertBefore(css, document.querySelector('link[rel="stylesheet"]'));
+      pyEditorLoading = loadScript(CODEMIRROR_BASE + "codemirror.min.js")
+        .then(function () {
+          return Promise.all([
+            loadScript(CODEMIRROR_BASE + "mode/python/python.min.js"),
+            loadScript(CODEMIRROR_BASE + "addon/edit/matchbrackets.min.js")
+          ]);
+        })
+        .then(function () {
+          pyEditor = CodeMirror.fromTextArea($("pyCode"), {
+            mode: "python",
+            lineNumbers: true,
+            indentUnit: 4,
+            tabSize: 4,
+            indentWithTabs: false,
+            matchBrackets: true,
+            viewportMargin: Infinity, // grow with the code instead of scrolling inside a fixed box
+            inputStyle: "contenteditable",
+            screenReaderLabel: "Python code (Ctrl+Enter to run, Escape then Tab to leave the editor)",
+            extraKeys: {
+              "Ctrl-Enter": function () { runPythonCell(); },
+              "Cmd-Enter": function () { runPythonCell(); },
+              "Tab": function (cm) {
+                if (pyTabEscapes) return CodeMirror.Pass;
+                if (cm.somethingSelected()) cm.execCommand("indentMore");
+                else cm.replaceSelection("    ");
+              },
+              "Shift-Tab": "indentLess",
+              "Esc": function () { pyTabEscapes = true; }
+            }
+          });
+          pyEditor.on("keydown", function (cm, e) {
+            if (e.key !== "Escape" && e.key !== "Tab") pyTabEscapes = false;
+          });
+          pyEditor.on("change", function (cm, change) {
+            if (change.origin !== "setValue") onPyCodeEdited();
+          });
+          // CodeMirror only re-measures on window resize; the panel also changes width
+          // when it gains or loses focus, which otherwise leaves a stray scrollbar
+          if (window.ResizeObserver) {
+            new ResizeObserver(function () { pyEditor.refresh(); }).observe($("pyCell"));
+          }
+        })
+        .catch(function (e) {
+          logDebug("CodeMirror failed to load; using the plain editor", { error: String(e) });
+        });
+      return pyEditorLoading;
+    }
+
+    function getPyCode() {
+      return pyEditor ? pyEditor.getValue() : $("pyCode").value;
+    }
+
+    function setPyCode(code) {
+      if (pyEditor) {
+        pyEditor.setValue(code);
+        pyEditor.clearHistory(); // undo must not jump back into another exercise's code
+      } else {
+        $("pyCode").value = code;
+        autosizePyCode();
+      }
+    }
+
+    // Plain-textarea fallback only; CodeMirror sizes itself
     function autosizePyCode() {
       var ta = $("pyCode");
       var lines = ta.value.split("\n").length;
       ta.rows = Math.min(Math.max(lines + 1, 6), 24);
+    }
+
+    function onPyCodeEdited() {
+      if (!pyEditor) autosizePyCode();
+      var prob = exercises[activeExerciseIndex];
+      if (!prob || !prob.python_cell) return;
+      prob.student_code = getPyCode();
+      clearTimeout(pySaveTimer);
+      pySaveTimer = setTimeout(function () {
+        if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
+      }, 500);
     }
 
     function renderPythonCell(prob) {
@@ -1076,12 +1174,13 @@
       var cell = prob && prob.python_cell;
       $("pyCell").style.display = cell ? "" : "none";
       if (!cell) return;
-      $("pyCode").value = typeof prob.student_code === "string" ? prob.student_code : cell.starter_code;
+      setPyCode(typeof prob.student_code === "string" ? prob.student_code : cell.starter_code);
       $("pyOutput").innerHTML = "";
       $("pyOutput").hidden = true;
       setPyStatus("");
       setPyRunning(false);
-      autosizePyCode();
+      // Measure after the cell is visible, or line heights come out wrong
+      ensurePyEditor().then(function () { if (pyEditor) pyEditor.refresh(); });
       // Start downloading Pyodide and the packages now, so the first Run is quick
       getPyWorker().postMessage({ id: ++pyRunId, type: "preload", packages: cell.packages || [] });
     }
@@ -1106,7 +1205,7 @@
       var prob = exercises[activeExerciseIndex];
       if (!prob || !prob.python_cell) return;
       var id = ++pyRunId;
-      var code = $("pyCode").value;
+      var code = getPyCode();
       pyActiveRun = { prob: prob, code: code, output: "", plots: 0 };
       $("pyOutput").innerHTML = "";
       $("pyOutput").hidden = true;
@@ -2758,13 +2857,13 @@
       $("pyResetBtn").addEventListener("click", function () {
         var prob = exercises[activeExerciseIndex];
         if (!prob || !prob.python_cell) return;
-        if ($("pyCode").value !== prob.python_cell.starter_code &&
+        if (getPyCode() !== prob.python_cell.starter_code &&
             !confirm("Replace your code with the original starter code?")) return;
-        $("pyCode").value = prob.python_cell.starter_code;
+        setPyCode(prob.python_cell.starter_code);
         prob.student_code = prob.python_cell.starter_code;
-        autosizePyCode();
         if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
       });
+      // Plain-textarea fallback keys (CodeMirror has its own extraKeys)
       $("pyCode").addEventListener("keydown", function (e) {
         if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runPythonCell(); return; }
         // Tab indents instead of leaving the editor; Esc then Tab still moves focus on
@@ -2777,16 +2876,7 @@
         if (e.key === "Escape") this.dataset.escaped = "1";
         else if (e.key !== "Tab") delete this.dataset.escaped;
       });
-      $("pyCode").addEventListener("input", function () {
-        autosizePyCode();
-        var prob = exercises[activeExerciseIndex];
-        if (!prob || !prob.python_cell) return;
-        prob.student_code = this.value;
-        clearTimeout(pySaveTimer);
-        pySaveTimer = setTimeout(function () {
-          if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
-        }, 500);
-      });
+      $("pyCode").addEventListener("input", onPyCodeEdited);
 
       $("rightStudentAnswer").addEventListener("keydown", function (e) {
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendRightChatMessage(); }
