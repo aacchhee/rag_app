@@ -14,7 +14,7 @@ from ingest.ingest import list_courses
 from log_utils import current_request_id, preview_text
 from rag.retriever import Retriever
 from rag.llm import chat_completion, chat_completion_stream, tool_call_args
-from rag.python_cell import PYTHON_CELL_TOOL, build_python_cell
+from rag.python_cell import PYTHON_CELL_TOOL, build_python_cell, student_code_context
 from rag import settings as RAG
 from prompts import get_prompt, get_language_instruction
 
@@ -1060,12 +1060,14 @@ def generate_hint():
 
     if not problem:
         return jsonify(error="Missing 'problem'", request_id=request_id), 400
+    code_ctx = student_code_context(data)
 
     app.logger.info(
-        "[req:%s] /hint problem_len=%d hint_level=%d chat_model=%s",
+        "[req:%s] /hint problem_len=%d hint_level=%d code_ctx_len=%d chat_model=%s",
         request_id,
         len(problem),
         hint_level,
+        len(code_ctx),
         chat_model,
     )
 
@@ -1074,6 +1076,7 @@ def generate_hint():
         get_language_instruction(lang) + "\n\n"
         "I am stuck on this problem:\n\n"
         + problem
+        + ("\n\n" + code_ctx if code_ctx else "")
         + "\n\nGive me hint level " + str(hint_level) + "."
     )
 
@@ -1124,15 +1127,18 @@ def assess_answer():
         return jsonify(error="Missing 'problem'", request_id=request_id), 400
     if not generated_answer:
         return jsonify(error="Missing 'generated_answer'", request_id=request_id), 400
-    if not student_answer:
+    code_ctx = student_code_context(data)
+    # Code in the Python cell counts as an answer on its own
+    if not student_answer and not code_ctx:
         return jsonify(error="Missing 'student_answer'", request_id=request_id), 400
 
     app.logger.info(
-        "[req:%s] /assess problem_len=%d generated_len=%d answer_len=%d chat_model=%s",
+        "[req:%s] /assess problem_len=%d generated_len=%d answer_len=%d code_ctx_len=%d chat_model=%s",
         request_id,
         len(problem),
         len(generated_answer),
         len(student_answer),
+        len(code_ctx),
         chat_model,
     )
 
@@ -1146,7 +1152,8 @@ def assess_answer():
             get_language_instruction(lang) + "\n\n"
             "PROBLEM:\n" + problem
             + "\n\nOFFICIAL GENERATED SOLUTION:\n" + generated_answer
-            + "\n\nSTUDENT'S ANSWER:\n" + student_answer
+            + "\n\nSTUDENT'S ANSWER:\n" + (student_answer or "(no written answer; the student answered with code)")
+            + ("\n\n" + code_ctx if code_ctx else "")
             + "\n\nAssess the student's answer."
         )
 
@@ -1233,14 +1240,16 @@ def check_approach():
 
     if not problem:
         return jsonify(error="Missing 'problem'", request_id=request_id), 400
-    if not student_answer:
+    code_ctx = student_code_context(data)
+    if not student_answer and not code_ctx:
         return jsonify(error="Missing 'student_answer'", request_id=request_id), 400
 
     app.logger.info(
-        "[req:%s] /check-approach problem_len=%d answer_len=%d chat_model=%s",
+        "[req:%s] /check-approach problem_len=%d answer_len=%d code_ctx_len=%d chat_model=%s",
         request_id,
         len(problem),
         len(student_answer),
+        len(code_ctx),
         chat_model,
     )
 
@@ -1253,7 +1262,8 @@ def check_approach():
         user_ca = (
             get_language_instruction(lang) + "\n\n"
             "PROBLEM:\n" + problem
-            + "\n\nMY APPROACH:\n" + student_answer
+            + "\n\nMY APPROACH:\n" + (student_answer or "(see my code below)")
+            + ("\n\n" + code_ctx if code_ctx else "")
             + "\n\nPlease evaluate my approach."
         )
 
@@ -1333,6 +1343,9 @@ def exercise_chat():
             user_e += "\n\nCONVERSATION HISTORY:\n" + "\n".join(history_lines)
 
         user_e += "\n\nSOURCES:\n" + "\n".join(source_blocks)
+        code_ctx = student_code_context(data)
+        if code_ctx:
+            user_e += "\n\n" + code_ctx
         user_e += f"\n\nSTUDENT'S MESSAGE:\n{text}\n\nRespond as the tutor."
 
         yield _sse("status", {"phase": "notes"})

@@ -1068,6 +1068,11 @@
     }
 
     function renderPythonCell(prob) {
+      // A run still going for another exercise would write into this one's output
+      if (pyActiveRun && pyActiveRun.prob !== prob) {
+        if (pyWorker) { pyWorker.terminate(); pyWorker = null; }
+        finishPyRun("stopped");
+      }
       var cell = prob && prob.python_cell;
       $("pyCell").style.display = cell ? "" : "none";
       if (!cell) return;
@@ -1081,10 +1086,28 @@
       getPyWorker().postMessage({ id: ++pyRunId, type: "preload", packages: cell.packages || [] });
     }
 
+    // The run in progress, recorded on its exercise when it ends so the tutor can see it
+    var pyActiveRun = null;
+
+    function finishPyRun(status) {
+      var run = pyActiveRun;
+      pyActiveRun = null;
+      if (!run) return;
+      run.prob.code_run = {
+        code: run.code,
+        status: status, // "done" | "error" | "stopped"
+        output: run.output.slice(0, PY_OUTPUT_LIMIT),
+        plots: run.plots
+      };
+      if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
+    }
+
     function runPythonCell() {
       var prob = exercises[activeExerciseIndex];
       if (!prob || !prob.python_cell) return;
       var id = ++pyRunId;
+      var code = $("pyCode").value;
+      pyActiveRun = { prob: prob, code: code, output: "", plots: 0 };
       $("pyOutput").innerHTML = "";
       $("pyOutput").hidden = true;
       setPyRunning(true);
@@ -1093,27 +1116,36 @@
       $("pyStatus").title = pyReady ? "" : "The first run downloads Python into your browser and takes a few seconds";
       pyRunHandler = function (m) {
         if (m.id !== id) return; // a preload or an older run
-        if (m.type === "stdout") appendPyOutput(m.text);
-        else if (m.type === "stderr") {
-          if (m.text.indexOf("Matplotlib is building the font cache") === -1) appendPyOutput(m.text, "py-out-err");
-        }
-        else if (m.type === "image") {
+        if (m.type === "stdout") {
+          pyActiveRun.output += m.text;
+          appendPyOutput(m.text);
+        } else if (m.type === "stderr") {
+          if (m.text.indexOf("Matplotlib is building the font cache") === -1) {
+            pyActiveRun.output += m.text;
+            appendPyOutput(m.text, "py-out-err");
+          }
+        } else if (m.type === "image") {
+          pyActiveRun.plots++;
           var img = document.createElement("img");
           img.src = "data:image/png;base64," + m.data;
           img.alt = "Plot produced by your code";
           $("pyOutput").hidden = false;
           $("pyOutput").appendChild(img);
         } else if (m.type === "error") {
-          appendPyOutput(cleanPyTraceback(m.text), "py-out-err");
+          var tb = cleanPyTraceback(m.text);
+          pyActiveRun.output += tb;
+          appendPyOutput(tb, "py-out-err");
           setPyStatus("Error");
           setPyRunning(false);
+          finishPyRun("error");
         } else if (m.type === "done") {
           if (!$("pyOutput").childNodes.length) appendPyOutput("(no output)", "py-out-note");
           setPyStatus("Done");
           setPyRunning(false);
+          finishPyRun("done");
         }
       };
-      worker.postMessage({ id: id, type: "run", code: $("pyCode").value, packages: prob.python_cell.packages || [] });
+      worker.postMessage({ id: id, type: "run", code: code, packages: prob.python_cell.packages || [] });
     }
 
     function stopPythonCell() {
@@ -1121,6 +1153,27 @@
       appendPyOutput("\nStopped.", "py-out-note");
       setPyStatus("Stopped");
       setPyRunning(false);
+      finishPyRun("stopped");
+    }
+
+    // Has the student done anything in the Python cell worth showing the tutor?
+    function hasStudentCode(prob) {
+      if (!prob || !prob.python_cell) return false;
+      var code = typeof prob.student_code === "string" ? prob.student_code : prob.python_cell.starter_code;
+      return !!prob.code_run || code !== prob.python_cell.starter_code;
+    }
+
+    // Add the student's code and last run to a request about the active exercise
+    function withCodeContext(payload) {
+      var prob = exercises[activeExerciseIndex];
+      if (!hasStudentCode(prob)) return payload;
+      var code = typeof prob.student_code === "string" ? prob.student_code : prob.python_cell.starter_code;
+      var run = prob.code_run;
+      payload.student_code = code;
+      if (!run) payload.code_run = { status: "never" };
+      else if (run.code !== code) payload.code_run = { status: "stale", output: run.output, plots: run.plots };
+      else payload.code_run = { status: run.status, output: run.output, plots: run.plots };
+      return payload;
     }
 
     // Right sidebar exercise chat rendering
@@ -1296,7 +1349,7 @@
       $("rightHintBtn").disabled = true;
       var hintRaw = "";
       try {
-        var payload = applySelectedCourse(applySelectedChatModel({ problem: exerciseText, hint_level: nextLevel }));
+        var payload = withCodeContext(applySelectedCourse(applySelectedChatModel({ problem: exerciseText, hint_level: nextLevel })));
         var response = await fetch("/rag2/hint", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         if (!response.ok) throw new Error("HTTP " + response.status);
         logDebug("Hint response", responseDebugInfo(response));
@@ -1410,16 +1463,18 @@
     async function submitRightAnswer() {
       setError("");
       var studentAnswer = $("rightStudentAnswer").value.trim();
-      if (!studentAnswer) { setRightError("Please enter your answer."); return; }
+      var prob = exercises[activeExerciseIndex];
+      var withCode = hasStudentCode(prob);
+      // Work in the Python cell counts as an answer on its own
+      if (!studentAnswer && !withCode) { setRightError("Please enter your answer."); return; }
       if (!currentGeneratedAnswerRaw.trim()) { setRightError("The generated answer is not ready yet. Please wait a moment."); return; }
 
-      var prob = exercises[activeExerciseIndex];
       if (!prob || !Array.isArray(prob.messages)) return;
 
       $("rightSubmitAnswerBtn").disabled = true;
       $("rightStudentAnswer").value = "";
 
-      _pushRightUserMessage(studentAnswer);
+      _pushRightUserMessage(studentAnswer || "Check my answer (see my Python code)");
 
       var bubbleId = "assess_" + Date.now();
       prob.messages.push({ role: "assistant", text: "", kind: "assess", createdAt: Date.now(), bubbleId: bubbleId });
@@ -1438,11 +1493,11 @@
         var response = await fetch("/rag2/assess", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(applySelectedCourse(applySelectedChatModel({
+          body: JSON.stringify(withCodeContext(applySelectedCourse(applySelectedChatModel({
             problem: currentExerciseRaw,
             generated_answer: currentGeneratedAnswerRaw,
             student_answer: studentAnswer
-          })))
+          }))))
         });
 
         if (!response.ok) {
@@ -1546,12 +1601,12 @@
       if (!exerciseText) return;
 
       var studentApproach = $("rightStudentAnswer").value.trim();
-      if (!studentApproach) { setRightError("Please describe your approach first."); return; }
-
       var prob = exercises[activeExerciseIndex];
+      if (!studentApproach && !hasStudentCode(prob)) { setRightError("Please describe your approach first."); return; }
+
       if (!prob || !Array.isArray(prob.messages)) return;
 
-      _pushRightUserMessage("Check my approach: " + studentApproach);
+      _pushRightUserMessage(studentApproach ? "Check my approach: " + studentApproach : "Check my approach (see my Python code)");
       $("rightStudentAnswer").value = "";
 
       var bubbleId = "approach_" + Date.now();
@@ -1563,7 +1618,7 @@
       $("rightCheckApproachBtn").disabled = true;
       var raw = "";
       try {
-        var payload = applySelectedCourse(applySelectedChatModel({ problem: exerciseText, student_answer: studentApproach }));
+        var payload = withCodeContext(applySelectedCourse(applySelectedChatModel({ problem: exerciseText, student_answer: studentApproach })));
         var response = await fetch("/rag2/check-approach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         if (!response.ok) throw new Error("HTTP " + response.status);
         await readEventStream(response, function (event, data) {
@@ -1637,12 +1692,12 @@
       $("rightAnswerSendBtn").disabled = true;
       var respRaw = "";
       try {
-        var payload = applySelectedCourse(applySelectedChatModel({
+        var payload = withCodeContext(applySelectedCourse(applySelectedChatModel({
           problem: currentExerciseRaw,
           messages: prob.messages.slice(0, -1).map(function (m) { return { role: m.role, text: m.text }; }),
           text: text,
           generated_answer: currentGeneratedAnswerRaw || ""
-        }));
+        })));
         var response = await fetch("/rag2/exercise-chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2243,6 +2298,7 @@
           prob.hint_level = 0;
           prob.python_cell = pythonCell;
           delete prob.student_code;
+          delete prob.code_run;
           renderActiveExercise();
         } else {
           addExercise(currentExerciseRaw, "", pythonCell);

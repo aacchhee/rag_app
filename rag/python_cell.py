@@ -86,6 +86,53 @@ def repair_starter_code(code: str, max_fixes: int = 20) -> str | None:
     return None
 
 
+MAX_CONTEXT_CODE_CHARS = 6000
+MAX_CONTEXT_OUTPUT_CHARS = 3000
+
+
+def _clip(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit] + "\n… (truncated)"
+
+
+def student_code_context(data: dict) -> str:
+    """
+    Prompt section describing the student's work in the exercise's Python cell,
+    or "" when the request carries no code. Sent by the frontend as
+    student_code plus code_run = {status, output, plots}, where status is
+    "done", "error", "stopped", "stale" (edited since the last run) or "never".
+    """
+    code = data.get("student_code")
+    if not isinstance(code, str) or not code.strip():
+        return ""
+    run = data.get("code_run") if isinstance(data.get("code_run"), dict) else {}
+    status = run.get("status") or "never"
+    output = run.get("output") if isinstance(run.get("output"), str) else ""
+    plots = run.get("plots") if isinstance(run.get("plots"), int) else 0
+
+    status_text = {
+        "done": "ran to completion",
+        "error": "raised an error",
+        "stopped": "was stopped by the student before finishing (possibly an endless loop)",
+        "stale": "has been edited since it was last run, so the output below may be outdated",
+        "never": "has not been run yet",
+    }.get(status, "has not been run yet")
+
+    parts = [
+        "STUDENT'S PYTHON CODE (written in the exercise's Python cell):",
+        "```python\n" + _clip(code.rstrip(), MAX_CONTEXT_CODE_CHARS) + "\n```",
+        "The last run " + status_text + ".",
+    ]
+    if status != "never":
+        parts.append("OUTPUT OF THE LAST RUN:\n```\n" + (_clip(output.rstrip(), MAX_CONTEXT_OUTPUT_CHARS) or "(no output)") + "\n```")
+    if plots:
+        parts.append(f"The code produced {plots} plot(s); you cannot see them, only that they exist.")
+    parts.append(
+        "Take the code and its output into account together with any written answer. "
+        "Refer to specific lines when that helps, but do not hand over finished code for the TODO parts."
+    )
+    return "\n\n".join(parts)
+
+
 def build_python_cell(args: dict, *, force: bool = False) -> dict | None:
     """
     Validate tool-call arguments into the cell sent to the browser.
