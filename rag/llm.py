@@ -265,6 +265,61 @@ def chat_completion(
         raise
 
 
+def tool_call_args(
+    messages: list[dict],
+    tool: dict,
+    *,
+    force: bool = False,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    chat_model: str | None = None,
+) -> dict | None:
+    """
+    Blocking call offering a single tool. Returns the parsed arguments of the
+    model's call to it, or None if the model chose not to call it.
+    force=True requires the call (named tool_choice).
+    """
+    temp = Config.CHAT_TEMPERATURE if temperature is None else temperature
+    tok = Config.CHAT_MAX_TOKENS if max_tokens is None else max_tokens
+    resolved_chat_model = Config.resolve_chat_model(chat_model)
+    extra_body = None
+    if "kimi" in resolved_chat_model.lower():
+        extra_body = {"chat_template_kwargs": {"thinking": False}}
+    name = tool["function"]["name"]
+    tool_choice = {"type": "function", "function": {"name": name}} if force else "auto"
+
+    started = time.perf_counter()
+    response = _get_raw_client().chat.completions.create(
+        model=resolved_chat_model,
+        messages=messages,
+        temperature=temp,
+        max_tokens=tok,
+        tools=[tool],
+        tool_choice=tool_choice,
+        extra_body=extra_body,
+    )
+    choice = response.choices[0]
+    calls = [c for c in (choice.message.tool_calls or []) if c.function.name == name]
+    logger.info(
+        "[req:%s] [llm] tool_call model=%s tool=%s force=%s called=%s finish_reason=%s dur_ms=%.1f",
+        current_request_id(),
+        resolved_chat_model,
+        name,
+        force,
+        bool(calls),
+        choice.finish_reason,
+        (time.perf_counter() - started) * 1000,
+    )
+    if not calls:
+        return None
+    try:
+        args = json.loads(calls[0].function.arguments or "{}")
+    except json.JSONDecodeError:
+        logger.warning("[req:%s] [llm] tool_call bad JSON arguments", current_request_id())
+        return None
+    return args if isinstance(args, dict) else None
+
+
 # ---------------------------------------------------------------------------
 # Stream
 # ---------------------------------------------------------------------------

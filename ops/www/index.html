@@ -174,6 +174,20 @@
           <!-- Exercise problem, always shown in full -->
           <div id="rightExerciseContent" class="exercise-box"></div>
 
+          <!-- Optional runnable Python cell (Pyodide, runs in the browser) -->
+          <section id="pyCell" class="py-cell" style="display:none;" aria-label="Python code for this exercise">
+            <div class="py-cell-header">
+              <span class="py-cell-title">Python</span>
+              <span id="pyStatus" class="py-cell-status" aria-live="polite"></span>
+              <button id="pyResetBtn" class="py-btn py-btn-secondary" type="button" title="Restore the starter code">Reset</button>
+              <button id="pyStopBtn" class="py-btn py-btn-secondary" type="button" hidden>Stop</button>
+              <button id="pyRunBtn" class="py-btn" type="button" title="Run (Ctrl+Enter)">▶ Run</button>
+            </div>
+            <textarea id="pyCode" class="py-code" spellcheck="false" autocapitalize="off" autocomplete="off"
+              aria-label="Python code (Ctrl+Enter to run)"></textarea>
+            <div id="pyOutput" class="py-output" hidden></div>
+          </section>
+
           <!-- Chat scroll area -->
           <div class="right-chat-scroll" id="rightChatScroll"></div>
         </div>
@@ -943,8 +957,170 @@
 
       $("rightShowAnswerBtn").disabled = !currentGeneratedAnswerRaw.trim();
 
+      renderPythonCell(prob);
+
       typesetMath();
       renderChatConversation();
+    }
+
+    // --- Python cell (Pyodide in a Web Worker) ---
+    // The worker keeps the page responsive and lets Stop kill runaway loops.
+    var PYODIDE_BASE = "https://cdn.jsdelivr.net/pyodide/v0.27.2/full/";
+    var PY_OUTPUT_LIMIT = 20000;
+    var pyWorker = null;
+    var pyReady = false;       // Pyodide finished loading in the current worker
+    var pyRunHandler = null;   // receives messages for the active run
+    var pyRunId = 0;
+    var pySaveTimer = null;
+
+    var PY_WORKER_SRC = [
+      'importScripts("' + PYODIDE_BASE + 'pyodide.js");',
+      'var ready = loadPyodide({ indexURL: "' + PYODIDE_BASE + '" });',
+      // Headless plots: never open windows, collect figures as PNGs after each run
+      'var PLOT_SETUP = "import matplotlib\\nmatplotlib.use(\'agg\')\\nimport matplotlib.pyplot as plt\\nplt.close(\'all\')\\nplt.show = lambda *a, **k: None";',
+      'var PLOT_COLLECT = "import base64, io\\nimport matplotlib.pyplot as _plt\\n_figs = []\\nfor _n in _plt.get_fignums():\\n    _b = io.BytesIO()\\n    _plt.figure(_n).savefig(_b, format=\'png\', dpi=100, bbox_inches=\'tight\')\\n    _figs.append(base64.b64encode(_b.getvalue()).decode())\\n_plt.close(\'all\')\\n_figs";',
+      'self.onmessage = async function (e) {',
+      '  var msg = e.data, id = msg.id;',
+      '  try {',
+      '    var py = await ready;',
+      '    if (msg.packages && msg.packages.length) await py.loadPackage(msg.packages);',
+      // Importing matplotlib once builds its font cache quietly, before the first run
+      '    if (msg.type === "preload") {',
+      '      if ((msg.packages || []).indexOf("matplotlib") !== -1) py.runPython(PLOT_SETUP);',
+      '      self.postMessage({ id: id, type: "ready" });',
+      '      return;',
+      '    }',
+      '    await py.loadPackagesFromImports(msg.code);',
+      '    py.setStdout({ batched: function (s) { self.postMessage({ id: id, type: "stdout", text: s + "\\n" }); } });',
+      '    py.setStderr({ batched: function (s) { self.postMessage({ id: id, type: "stderr", text: s + "\\n" }); } });',
+      '    var usesPlots = /\\bmatplotlib\\b/.test(msg.code);',
+      '    if (usesPlots) py.runPython(PLOT_SETUP);',
+      // Fresh namespace per run, so earlier runs can't leak state
+      '    var ns = py.globals.get("dict")();',
+      '    ns.set("__name__", "__main__");',
+      '    await py.runPythonAsync(msg.code, { globals: ns });',
+      '    ns.destroy();',
+      '    if (usesPlots) {',
+      '      var figs = py.runPython(PLOT_COLLECT);',
+      '      var list = figs.toJs(); figs.destroy();',
+      '      list.forEach(function (b64) { self.postMessage({ id: id, type: "image", data: b64 }); });',
+      '    }',
+      '    self.postMessage({ id: id, type: "done" });',
+      '  } catch (err) {',
+      '    self.postMessage({ id: id, type: "error", text: String(err && err.message || err) });',
+      '  }',
+      '};'
+    ].join("\n");
+
+    function getPyWorker() {
+      if (!pyWorker) {
+        var url = URL.createObjectURL(new Blob([PY_WORKER_SRC], { type: "text/javascript" }));
+        pyWorker = new Worker(url);
+        URL.revokeObjectURL(url);
+        pyReady = false;
+        pyWorker.onmessage = function (e) {
+          if (e.data.type !== "error") pyReady = true; // any other reply means Pyodide loaded
+          if (pyRunHandler) pyRunHandler(e.data);
+        };
+      }
+      return pyWorker;
+    }
+
+    // Drop Pyodide's own frames from tracebacks; keep the student's code lines
+    function cleanPyTraceback(text) {
+      var lines = String(text || "").split("\n");
+      var start = -1;
+      for (var i = 0; i < lines.length; i++) {
+        if (lines[i].indexOf('File "<exec>"') !== -1) { start = i; break; }
+      }
+      if (start === -1) return text;
+      return "Traceback (most recent call last):\n" + lines.slice(start).join("\n").replace(/"<exec>"/g, '"your code"');
+    }
+
+    function setPyStatus(text) { $("pyStatus").textContent = text || ""; }
+
+    function setPyRunning(running) {
+      $("pyRunBtn").disabled = running;
+      $("pyStopBtn").hidden = !running;
+    }
+
+    function appendPyOutput(text, cls) {
+      var out = $("pyOutput");
+      out.hidden = false;
+      if (out.textContent.length > PY_OUTPUT_LIMIT) return;
+      var span = document.createElement("span");
+      if (cls) span.className = cls;
+      span.textContent = text;
+      out.appendChild(span);
+      if (out.textContent.length > PY_OUTPUT_LIMIT) {
+        var note = document.createElement("span");
+        note.className = "py-out-note";
+        note.textContent = "\n… output truncated";
+        out.appendChild(note);
+      }
+      out.scrollTop = out.scrollHeight;
+    }
+
+    function autosizePyCode() {
+      var ta = $("pyCode");
+      var lines = ta.value.split("\n").length;
+      ta.rows = Math.min(Math.max(lines + 1, 6), 24);
+    }
+
+    function renderPythonCell(prob) {
+      var cell = prob && prob.python_cell;
+      $("pyCell").style.display = cell ? "" : "none";
+      if (!cell) return;
+      $("pyCode").value = typeof prob.student_code === "string" ? prob.student_code : cell.starter_code;
+      $("pyOutput").innerHTML = "";
+      $("pyOutput").hidden = true;
+      setPyStatus("");
+      setPyRunning(false);
+      autosizePyCode();
+      // Start downloading Pyodide and the packages now, so the first Run is quick
+      getPyWorker().postMessage({ id: ++pyRunId, type: "preload", packages: cell.packages || [] });
+    }
+
+    function runPythonCell() {
+      var prob = exercises[activeExerciseIndex];
+      if (!prob || !prob.python_cell) return;
+      var id = ++pyRunId;
+      $("pyOutput").innerHTML = "";
+      $("pyOutput").hidden = true;
+      setPyRunning(true);
+      var worker = getPyWorker();
+      setPyStatus(pyReady ? "Running…" : "Loading Python…");
+      $("pyStatus").title = pyReady ? "" : "The first run downloads Python into your browser and takes a few seconds";
+      pyRunHandler = function (m) {
+        if (m.id !== id) return; // a preload or an older run
+        if (m.type === "stdout") appendPyOutput(m.text);
+        else if (m.type === "stderr") {
+          if (m.text.indexOf("Matplotlib is building the font cache") === -1) appendPyOutput(m.text, "py-out-err");
+        }
+        else if (m.type === "image") {
+          var img = document.createElement("img");
+          img.src = "data:image/png;base64," + m.data;
+          img.alt = "Plot produced by your code";
+          $("pyOutput").hidden = false;
+          $("pyOutput").appendChild(img);
+        } else if (m.type === "error") {
+          appendPyOutput(cleanPyTraceback(m.text), "py-out-err");
+          setPyStatus("Error");
+          setPyRunning(false);
+        } else if (m.type === "done") {
+          if (!$("pyOutput").childNodes.length) appendPyOutput("(no output)", "py-out-note");
+          setPyStatus("Done");
+          setPyRunning(false);
+        }
+      };
+      worker.postMessage({ id: id, type: "run", code: $("pyCode").value, packages: prob.python_cell.packages || [] });
+    }
+
+    function stopPythonCell() {
+      if (pyWorker) { pyWorker.terminate(); pyWorker = null; }
+      appendPyOutput("\nStopped.", "py-out-note");
+      setPyStatus("Stopped");
+      setPyRunning(false);
     }
 
     // Right sidebar exercise chat rendering
@@ -1035,6 +1211,8 @@
       if (prob.assessment) return true;
       if (prob.answer_shown) return true;
       if ((prob.student_answer || "").trim()) return true;
+      if (prob.python_cell && typeof prob.student_code === "string" &&
+          prob.student_code !== prob.python_cell.starter_code) return true;
       return false;
     }
 
@@ -1047,9 +1225,10 @@
       if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
     }
 
-    function addExercise(exerciseText, generatedAnswer) {
+    function addExercise(exerciseText, generatedAnswer, pythonCell) {
       var prob = {
         problem: exerciseText,
+        python_cell: pythonCell || null,
         generated_answer: generatedAnswer || "",
         student_answer: "",
         assessment: "",
@@ -1570,7 +1749,8 @@
           html += '<div class="assistant-label">Assistant <span>&middot;</span> <small>generated exercise</small></div>';
           html += '<div class="chat-bubble-content">';
           // Compact title card; the full exercise lives in the right sidebar
-          html += '<div class="exercise-title">📝 Exercise ' + (item.index + 1) + '</div>';
+          html += '<div class="exercise-title">📝 Exercise ' + (item.index + 1) +
+            (prob.python_cell ? ' <span class="exercise-tag">Python</span>' : '') + '</div>';
           html += '<div class="exercise-preview">' + renderMarkdown(prob.problem) + '</div>';
           html += '<div class="exercise-card-actions">';
           html += '<div class="exercise-adjust-row">';
@@ -1579,6 +1759,13 @@
           html += '<button data-adjust="easier" data-exercise-index="' + item.index + '">Easier</button>';
           html += '<button data-adjust="same" data-exercise-index="' + item.index + '">Same</button>';
           html += '<button data-adjust="harder" data-exercise-index="' + item.index + '">Harder</button>';
+          html += '</div>';
+          html += '</div>';
+          html += '<div class="exercise-adjust-row">';
+          html += '<span class="exercise-adjust-title">Computational</span>';
+          html += '<div class="segmented">';
+          html += '<button data-compute="less" data-exercise-index="' + item.index + '" title="By hand, without code">Less</button>';
+          html += '<button data-compute="more" data-exercise-index="' + item.index + '" title="With a Python cell">More</button>';
           html += '</div>';
           html += '</div>';
           html += '<button class="exercise-card-btn" data-exercise-index="' + item.index + '">Discuss Exercise</button>';
@@ -1918,12 +2105,15 @@
 
     // Exercise generation
     // difficultyAdjustment: "", "easier", or "harder"
-    async function generateExercise(difficultyAdjustment) {
+    // computational: "", "more" (Python cell required) or "less" (by hand, no cell)
+    async function generateExercise(difficultyAdjustment, computational) {
       setError("");
       currentExerciseRaw = "";
       currentGeneratedAnswerRaw = "";
+      var pythonCell = null;
 
-      var shouldReplace = difficultyAdjustment && difficultyAdjustment !== "" && !_isActiveExerciseEngaged();
+      var isAdjustment = !!(difficultyAdjustment || computational);
+      var shouldReplace = isAdjustment && !_isActiveExerciseEngaged();
 
       // The chat only shows a compact card, so stream the exercise where it can be read
       openRightSidebar();
@@ -1933,6 +2123,7 @@
       $("rightExerciseContent").classList.add("streaming-cursor");
       $("rightAnswerInputArea").classList.remove("visible");
       $("rightStudentAnswer").value = "";
+      $("pyCell").style.display = "none";
       showThinking("rightExerciseContent");
       $("exerciseBtn").disabled = true;
       $("rightSubmitAnswerBtn").disabled = true;
@@ -1950,8 +2141,11 @@
           difficulty: $("exerciseDifficulty").value
         };
 
-        if (difficultyAdjustment) {
-          chatPayloadBase.difficulty_adjustment = difficultyAdjustment;
+        if (computational) {
+          chatPayloadBase.computational = computational;
+        }
+        if (isAdjustment) {
+          if (difficultyAdjustment) chatPayloadBase.difficulty_adjustment = difficultyAdjustment;
           var prevProb = "";
           if (activeExerciseIndex >= 0 && activeExerciseIndex < exercises.length) {
             prevProb = exercises[activeExerciseIndex].problem || "";
@@ -1990,6 +2184,9 @@
             if (data.phase === "generating") {
               $(targetEl).innerHTML = "";
             }
+            if (data.phase === "python_cell") {
+              setStatus("Preparing Python cell…");
+            }
             return;
           }
           if (event === "token") {
@@ -2006,6 +2203,11 @@
               currentExerciseRaw = data.problem;
               $(targetEl).innerHTML = renderMarkdown(currentExerciseRaw);
             }
+            return;
+          }
+          if (event === "python_cell") {
+            logDebug("Exercise stream python_cell", { lines: (data.starter_code || "").split("\n").length, packages: data.packages });
+            if (data.starter_code) pythonCell = { starter_code: data.starter_code, packages: data.packages || [] };
             return;
           }
           if (event === "error") {
@@ -2039,9 +2241,11 @@
           prob.answer_shown = false;
           prob.messages = [];
           prob.hint_level = 0;
+          prob.python_cell = pythonCell;
+          delete prob.student_code;
           renderActiveExercise();
         } else {
-          addExercise(currentExerciseRaw);
+          addExercise(currentExerciseRaw, "", pythonCell);
         }
         await calculateRightExerciseAnswer();
 
@@ -2474,12 +2678,14 @@
         var btn = e.target.closest(".exercise-card-actions .segmented button");
         if (!btn) return;
         var adj = btn.getAttribute("data-adjust");
+        var compute = btn.getAttribute("data-compute");
         var idx = parseInt(btn.getAttribute("data-exercise-index"), 10);
-        if (!adj || isNaN(idx)) return;
+        if ((!adj && !compute) || isNaN(idx)) return;
         e.stopPropagation();
         activeExerciseIndex = idx;
         renderActiveExercise();
-        generateExercise(adj === "same" ? "" : adj);
+        if (compute) generateExercise("", compute);
+        else generateExercise(adj === "same" ? "" : adj);
       });
 
       $("rightSubmitAnswerBtn").addEventListener("click", submitRightAnswer);
@@ -2489,6 +2695,42 @@
       $("rightAnswerSendBtn").addEventListener("click", sendRightChatMessage);
 
       $("q").addEventListener("focus", unfocusRightSidebar);
+
+      // Python cell
+      $("pyRunBtn").addEventListener("click", runPythonCell);
+      $("pyStopBtn").addEventListener("click", stopPythonCell);
+      $("pyResetBtn").addEventListener("click", function () {
+        var prob = exercises[activeExerciseIndex];
+        if (!prob || !prob.python_cell) return;
+        if ($("pyCode").value !== prob.python_cell.starter_code &&
+            !confirm("Replace your code with the original starter code?")) return;
+        $("pyCode").value = prob.python_cell.starter_code;
+        prob.student_code = prob.python_cell.starter_code;
+        autosizePyCode();
+        if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
+      });
+      $("pyCode").addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runPythonCell(); return; }
+        // Tab indents instead of leaving the editor; Esc then Tab still moves focus on
+        if (e.key === "Tab" && !e.shiftKey && !this.dataset.escaped) {
+          e.preventDefault();
+          var start = this.selectionStart;
+          this.setRangeText("    ", start, this.selectionEnd, "end");
+          this.dispatchEvent(new Event("input"));
+        }
+        if (e.key === "Escape") this.dataset.escaped = "1";
+        else if (e.key !== "Tab") delete this.dataset.escaped;
+      });
+      $("pyCode").addEventListener("input", function () {
+        autosizePyCode();
+        var prob = exercises[activeExerciseIndex];
+        if (!prob || !prob.python_cell) return;
+        prob.student_code = this.value;
+        clearTimeout(pySaveTimer);
+        pySaveTimer = setTimeout(function () {
+          if (currentConvId) saveConversation(currentConvId, conversationTitleFromHistory(chatHistory), chatHistory, exercises);
+        }, 500);
+      });
 
       $("rightStudentAnswer").addEventListener("keydown", function (e) {
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendRightChatMessage(); }

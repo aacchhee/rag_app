@@ -2229,6 +2229,144 @@ details > summary.box-title {
   padding-bottom: 10px;
 }
 
+/* Stacked rows (Adjust + Computational) share one divider */
+.exercise-adjust-row + .exercise-adjust-row {
+  border-top: none;
+  margin-top: -10px;
+}
+
+.exercise-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--green-border);
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* === Python cell (exercise panel) === */
+.py-cell {
+  margin-top: 12px;
+  border: 1px solid var(--task-line);
+  border-radius: 14px;
+  background: var(--task-bg);
+  overflow: hidden;
+}
+
+.py-cell-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 16px;
+  border-bottom: 1px solid var(--task-line);
+}
+
+.py-cell-title {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--task-text);
+}
+
+.py-cell-status {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.py-btn {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--green);
+  border-radius: 8px;
+  background: var(--green);
+  color: var(--text-inverse);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: auto;
+}
+
+/* The global button rule sets display, which would otherwise beat [hidden] */
+.py-btn[hidden] {
+  display: none;
+}
+
+.py-btn:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+.py-btn-secondary {
+  background: transparent;
+  border-color: var(--green-border);
+  color: var(--green);
+}
+
+.py-code {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 12px 16px;
+  border: 0;
+  /* Undo the global textarea look (sized for the chat composer) */
+  min-height: 0;
+  max-height: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--surface);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  tab-size: 4;
+  white-space: pre;
+  overflow-x: auto;
+  resize: vertical;
+}
+
+.py-code:focus {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+
+.py-output {
+  max-height: 360px;
+  overflow: auto;
+  padding: 10px 16px;
+  border-top: 1px solid var(--task-line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--task-text);
+}
+
+.py-output img {
+  display: block;
+  max-width: 100%;
+  margin: 8px 0;
+  border-radius: 6px;
+  background: #fff; /* matplotlib figures are drawn on white */
+}
+
+.py-out-err {
+  color: var(--danger);
+}
+
+.py-out-note {
+  color: var(--muted);
+}
+
 .exercise-adjust-title {
   font-size: 12px;
   font-weight: 600;

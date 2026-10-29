@@ -934,6 +934,25 @@ _LANGUAGE_INSTRUCTION = {
 }
 
 
+_PYTHON_CELL_EN = (
+    "You decide whether a math practice problem should come with a runnable Python cell. "
+    "Always answer by calling the create_python_cell tool.\n\n"
+    "use_python:\n"
+    "- true if the problem asks to approximate numerically, iterate an algorithm (e.g. Newton's "
+    "method, fixed-point or Euler steps), simulate, plot or visualize, work with data, or do a "
+    "calculation that is tedious by hand (large matrices, many terms, many cases).\n"
+    "- false for proofs, definitions, conceptual questions, or problems a student solves in a "
+    "few lines by hand (a single derivative, limit or small equation). Then omit starter_code.\n\n"
+    "RULES FOR THE CODE (when use_python is true):\n"
+    "- The starter code must run without errors as given: every function, loop and if-block "
+    "needs a body ('pass' or '...').\n"
+    "- Mark what the student must write with '# TODO' comments.\n"
+    "- Never include the solution, the final answer, or code that computes it.\n"
+    "- Only import numpy, sympy and matplotlib (plus the standard library).\n"
+    "- Keep it short: typically 5-30 lines."
+)
+
+
 def get_language_instruction(lang: str) -> str:
     """Return a short directive telling the model which language to respond in."""
     return _LANGUAGE_INSTRUCTION.get(lang, "Respond in English.")
@@ -957,6 +976,8 @@ _PROMPTS = {
         "explain": _EXPLAIN_EN,
         "check_approach": _CHECK_APPROACH_EN,
         "exercise_chat": _EXERCISE_CHAT_EN,
+        # English only: other languages fall back here and get a language instruction for code comments
+        "python_cell": _PYTHON_CELL_EN,
     },
     "no": {
         "answer_notes": _ANSWER_NOTES_NO,

@@ -13,7 +13,8 @@ from ingest.embed import embed_query
 from ingest.ingest import list_courses
 from log_utils import current_request_id, preview_text
 from rag.retriever import Retriever
-from rag.llm import chat_completion, chat_completion_stream
+from rag.llm import chat_completion, chat_completion_stream, tool_call_args
+from rag.python_cell import PYTHON_CELL_TOOL, build_python_cell
 from rag import settings as RAG
 from prompts import get_prompt, get_language_instruction
 
@@ -789,6 +790,11 @@ def generate_problem():
     difficulty_adjustment = (data.get("difficulty_adjustment") or "").strip().lower()
     if difficulty_adjustment not in ("", "easier", "harder"):
         difficulty_adjustment = ""
+    # "more": computational problem with a forced Python cell; "less": by hand, no cell;
+    # "": the model decides whether a Python cell fits
+    computational = (data.get("computational") or "").strip().lower()
+    if computational not in ("", "more", "less"):
+        computational = ""
     previous_problem = (data.get("previous_problem") or "").strip()
     chat_model, error_response = _resolve_request_chat_model(data, request_id=request_id)
     if error_response:
@@ -800,8 +806,8 @@ def generate_problem():
         return jsonify(error="Missing 'question' or 'conversation_context'", request_id=request_id), 400
 
     # Use conversation context for retrieval when available; otherwise fall back to the single question.
-    # For difficulty adjustments, retrieve based on the previous problem so the new exercise stays on topic.
-    if difficulty_adjustment and previous_problem:
+    # For difficulty/computational adjustments, retrieve based on the previous problem so the new exercise stays on topic.
+    if (difficulty_adjustment or computational) and previous_problem:
         retrieval_query = previous_problem
     else:
         retrieval_query = conversation_context if conversation_context else q
@@ -850,6 +856,19 @@ def generate_problem():
         else:
             user_p += " Generate one practice problem related to this topic."
 
+        if computational == "more":
+            user_p += (
+                " Make the problem MORE COMPUTATIONAL: it should be solved by computing, iterating,"
+                " simulating or plotting in Python (numpy/sympy/matplotlib), e.g. a numerical method"
+                " or a larger calculation. Do not include any code in the statement; a Python cell"
+                " is attached separately."
+            )
+        elif computational == "less":
+            user_p += (
+                " Make the problem LESS COMPUTATIONAL: conceptual or solvable by hand with pen and"
+                " paper (reasoning, short derivations, interpretation), without software."
+            )
+
         yield _sse("status", {"phase": "generating"})
 
         raw = ""
@@ -869,9 +888,55 @@ def generate_problem():
             len(problem_text),
         )
         yield _sse("problem_done", {"problem": problem_text})
+
+        if computational != "less" and problem_text:
+            yield _sse("status", {"phase": "python_cell"})
+            cell = _python_cell_for(problem_text, lang, chat_model, force=computational == "more")
+            if cell:
+                yield _sse("python_cell", cell)
+
         yield _sse("done", {"request_id": request_id, "chat_model": chat_model, "ok": True})
 
     return _stream_response(generate())
+
+
+def _python_cell_for(problem_text: str, lang: str, chat_model: str, *, force: bool) -> dict | None:
+    """
+    Ask the model whether this problem gets a Python cell (force=True: the student
+    asked for more computational, so it must). Never fails the exercise.
+    """
+    request_id = current_request_id()
+    user_p = get_language_instruction(lang) + " (applies to code comments)\n\nPROBLEM:\n" + problem_text
+    if force:
+        user_p += "\n\nThe student asked for a computational exercise: set use_python to true."
+    try:
+        args = tool_call_args(
+            [
+                {"role": "system", "content": get_prompt("python_cell", lang)},
+                {"role": "user", "content": user_p},
+            ],
+            PYTHON_CELL_TOOL,
+            force=True,
+            temperature=0.3,
+            max_tokens=3000,
+            chat_model=chat_model,
+        )
+    except Exception:
+        app.logger.exception("[req:%s] /problem python_cell call failed", request_id)
+        return None
+    if args is None:
+        app.logger.info("[req:%s] /problem python_cell no tool call force=%s", request_id, force)
+        return None
+    cell = build_python_cell(args, force=force)
+    app.logger.info(
+        "[req:%s] /problem python_cell use_python=%s force=%s result=%s packages=%s",
+        request_id,
+        args.get("use_python"),
+        force,
+        "cell" if cell else "none",
+        cell["packages"] if cell else "-",
+    )
+    return cell
 
 
 # Generated answer endpoint
