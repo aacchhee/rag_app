@@ -223,6 +223,21 @@
     <button class="right-sidebar-toggle" id="rightSidebarToggle" type="button" aria-label="Toggle exercise panel">◀</button>
   </div>
 
+  <!-- Source panel: opened from [S1] citations and source chips under answers -->
+  <div id="sourcePanel" class="source-panel" role="dialog" aria-labelledby="sourcePanelTitle" hidden>
+    <div class="source-panel-header">
+      <span id="sourcePanelTag" class="source-chip-tag"></span>
+      <h2 id="sourcePanelTitle" class="source-panel-title"></h2>
+      <button id="sourcePanelClose" class="source-panel-close" type="button" aria-label="Close source">×</button>
+    </div>
+    <div id="sourcePanelMeta" class="source-panel-meta"></div>
+    <div id="sourcePanelExcerpt" class="source-panel-excerpt"></div>
+    <div class="source-panel-footer">
+      <a id="sourcePanelLink" class="source-panel-link" target="_blank" rel="noopener">Open in lecture notes ↗</a>
+      <span id="sourcePanelNoLink" class="source-panel-nolink">This source has no public page.</span>
+    </div>
+  </div>
+
   <script>
     function $(id) { return document.getElementById(id); }
     function setStatus(msg) { $("status").textContent = msg || ""; }
@@ -1842,6 +1857,131 @@
       }
     }
 
+    // --- Source citations ---
+    // [S1] tags in an answer become buttons, and the sources it cites are listed
+    // under it. Both open the source panel: the excerpt the answer was based on
+    // and, when the notes are published, a link to that section.
+    var CITE_RE = /\[S(\d+)\]/g;
+    var sourcePanelTrigger = null;
+
+    function sourceByTag(turn, n) {
+      var list = turn && Array.isArray(turn.sources) ? turn.sources : [];
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].tag === "[S" + n + "]") return list[i];
+      }
+      return null;
+    }
+
+    function citedNumbers(answer) {
+      var seen = [];
+      String(answer || "").replace(CITE_RE, function (all, n) {
+        if (seen.indexOf(n) === -1) seen.push(n);
+        return all;
+      });
+      return seen;
+    }
+
+    function sourceLabel(src) {
+      var heading = (src.heading || "").trim();
+      if (heading && heading !== "Preamble") return heading;
+      return String(src.source || "").split("/").pop();
+    }
+
+    // Rendered answer HTML -> the same with [S1] tags as buttons (tags without a known source stay text)
+    function linkCitations(html, turnIndex) {
+      var turn = chatHistory[turnIndex];
+      if (!turn || !Array.isArray(turn.sources) || !turn.sources.length) return html;
+      return html.replace(CITE_RE, function (all, n) {
+        var src = sourceByTag(turn, n);
+        if (!src) return all;
+        return '<button type="button" class="cite-btn" data-turn="' + turnIndex + '" data-tag="' + n +
+          '" aria-label="Source ' + n + ': ' + escapeHtml(sourceLabel(src)) + '">' + n + '</button>';
+      });
+    }
+
+    // The sources an answer cites (or, if it cites none, all it was given), once per section
+    function sourcesRowHtml(turnIndex) {
+      var turn = chatHistory[turnIndex];
+      var list = turn && Array.isArray(turn.sources) ? turn.sources : [];
+      if (!list.length) return "";
+      var cited = citedNumbers(turn.answer).map(function (n) { return sourceByTag(turn, n); }).filter(Boolean);
+      var shown = cited.length ? cited : list;
+      var seen = {};
+      var chips = "";
+      shown.forEach(function (src) {
+        var key = src.url || (src.source + "|" + src.heading);
+        if (seen[key]) return;
+        seen[key] = true;
+        var n = String(src.tag || "").replace(/\D/g, "");
+        chips += '<button type="button" class="source-chip" data-turn="' + turnIndex + '" data-tag="' + n + '">' +
+          '<span class="source-chip-tag">' + n + '</span>' + escapeHtml(sourceLabel(src)) + '</button>';
+      });
+      return '<div class="sources-row"><span class="sources-label">' + (cited.length ? "Sources" : "Based on") + '</span>' + chips + '</div>';
+    }
+
+    // Stored with each turn: what the panel needs, without scores and ids
+    function compactSources(list) {
+      return (Array.isArray(list) ? list : []).map(function (s) {
+        return { tag: s.tag, heading: s.heading || "", source: s.source || "", course: s.course || "", url: s.url || "", excerpt: s.excerpt || "" };
+      });
+    }
+
+    function openSourcePanel(turnIndex, n, trigger) {
+      var src = sourceByTag(chatHistory[turnIndex], n);
+      if (!src) return;
+      var panel = $("sourcePanel");
+      $("sourcePanelTag").textContent = n;
+      $("sourcePanelTitle").textContent = sourceLabel(src);
+      $("sourcePanelMeta").textContent = [src.course, src.source].filter(Boolean).join(" · ");
+      $("sourcePanelExcerpt").innerHTML = src.excerpt ? renderMarkdown(src.excerpt) : "";
+      if (src.url) {
+        $("sourcePanelLink").href = src.url;
+        $("sourcePanelLink").hidden = false;
+        $("sourcePanelNoLink").hidden = true;
+      } else {
+        $("sourcePanelLink").removeAttribute("href");
+        $("sourcePanelLink").hidden = true;
+        $("sourcePanelNoLink").hidden = false;
+      }
+      panel.hidden = false;
+      sourcePanelTrigger = trigger || null;
+      positionSourcePanel(trigger);
+      typesetMath().then(function () { positionSourcePanel(trigger); });
+      $("sourcePanelClose").focus();
+    }
+
+    // Below the trigger, or above it when there is no room; inside the viewport
+    function positionSourcePanel(trigger) {
+      var panel = $("sourcePanel");
+      if (panel.hidden) return;
+      var margin = 16;
+      var width = Math.min(440, window.innerWidth - 2 * margin);
+      panel.style.width = width + "px";
+      var rect = trigger ? trigger.getBoundingClientRect() : { left: margin, bottom: margin, top: margin };
+      var left = Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin));
+      var height = panel.offsetHeight;
+      var top = rect.bottom + 8;
+      if (top + height > window.innerHeight - margin) top = Math.max(margin, rect.top - height - 8);
+      panel.style.left = left + "px";
+      panel.style.top = top + "px";
+    }
+
+    function closeSourcePanel() {
+      var panel = $("sourcePanel");
+      if (panel.hidden) return;
+      panel.hidden = true;
+      if (sourcePanelTrigger && document.body.contains(sourcePanelTrigger)) sourcePanelTrigger.focus();
+      sourcePanelTrigger = null;
+    }
+
+    // Previous turns as the backend reads them; old [S1] tags would point at
+    // that turn's sources, not the next one's, so they are left out
+    function historyForRequest() {
+      return chatHistory.map(function (t) {
+        return { question: t.question, answer: String(t.answer || "").replace(/\s?\[S\d+\]/g, "") };
+      });
+    }
+
     // Chat rendering
     function renderChatConversation() {
       var scroll = $("chatScroll");
@@ -1883,7 +2023,8 @@
           html += '<div class="assistant-avatar" aria-hidden="true">RAG</div>';
           html += '<div class="assistant-body">';
           html += '<div class="assistant-label">Assistant <span>&middot;</span> <small>based on your materials</small></div>';
-          html += '<div class="chat-bubble-content" data-raw="' + escapeHtml(turn.answer || "") + '">' + renderMarkdown(turn.answer) + '</div>';
+          html += '<div class="chat-bubble-content" data-raw="' + escapeHtml(turn.answer || "") + '">' + linkCitations(renderMarkdown(turn.answer), item.index) + '</div>';
+          html += sourcesRowHtml(item.index);
           html += '<div class="chat-bubble-actions">';
           html += '<button class="copy-btn" type="button" data-copy-target="raw" title="Copy answer">Copy</button>';
           html += '</div>';
@@ -2210,13 +2351,19 @@
       mathRenderTimer = setTimeout(function () { typesetMath(); }, 400);
     }
 
-    function finalizeStreamingBubble(coverage) {
+    function finalizeStreamingBubble(coverage, turnIndex) {
       var target = document.getElementById("chatStreamTarget");
       if (target) {
         target.classList.remove("streaming-cursor");
         target.removeAttribute("id");
         target.removeAttribute("aria-live");
         target.removeAttribute("aria-atomic");
+
+        // Citations become clickable once the answer and its sources are in
+        if (typeof turnIndex === "number") {
+          target.innerHTML = linkCitations(renderMarkdown(chatHistory[turnIndex].answer), turnIndex);
+          target.insertAdjacentHTML("afterend", sourcesRowHtml(turnIndex));
+        }
 
         if (coverage) {
           var metaDiv = document.createElement("div");
@@ -2445,7 +2592,7 @@
       var payload = applySelectedCourse(applySelectedChatModel({
         question: question,
         chat_mode: true,
-        history: chatHistory
+        history: historyForRequest()
       }));
 
       $("askBtn").disabled = true;
@@ -2471,11 +2618,13 @@
         }
         logDebug("Ask response", responseDebugInfo(response));
         var streamCoverage = "";
+        var streamSources = [];
 
         await readEventStream(response, function (event, data) {
           if (event === "notes_done" || event === "done") {
             if (data.coverage) streamCoverage = data.coverage;
           }
+          if (event === "sources") streamSources = compactSources(data);
           handleSSE(event, data);
         });
 
@@ -2484,9 +2633,10 @@
           question: question,
           answer: rawNotes,
           coverage: streamCoverage,
+          sources: streamSources,
           createdAt: questionTime
         });
-        finalizeStreamingBubble(streamCoverage);
+        finalizeStreamingBubble(streamCoverage, chatHistory.length - 1);
         autoSaveCurrentConversation();
         // Show Exercise actions after first turn
         $("exerciseActions").style.display = "flex";
@@ -2817,6 +2967,24 @@
         if (isNaN(msgIdx)) return;
         toggleRightAnswerBubble(msgIdx);
       });
+
+      // Source citations and chips open the source panel
+      document.addEventListener("click", function (e) {
+        var btn = e.target.closest(".cite-btn, .source-chip");
+        if (btn) {
+          e.preventDefault();
+          openSourcePanel(parseInt(btn.getAttribute("data-turn"), 10), btn.getAttribute("data-tag"), btn);
+          return;
+        }
+        if (!$("sourcePanel").hidden && !e.target.closest("#sourcePanel")) closeSourcePanel();
+      });
+      $("sourcePanelClose").addEventListener("click", closeSourcePanel);
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && !$("sourcePanel").hidden) closeSourcePanel();
+      });
+      window.addEventListener("resize", function () { positionSourcePanel(sourcePanelTrigger); });
+      // Follow the citation (math typesetting can also shift the chat)
+      $("chatScroll").addEventListener("scroll", function () { positionSourcePanel(sourcePanelTrigger); }, { passive: true });
 
       // Copy button on assistant bubbles
       document.addEventListener("click", function (e) {

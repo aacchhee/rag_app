@@ -10,9 +10,10 @@ from werkzeug.exceptions import HTTPException
 from config import Config
 from cleanup import sanitize_llm_answer, sanitize_llm_text
 from ingest.embed import embed_query
-from ingest.ingest import list_courses
+from ingest.ingest import REPOS, SITE_URLS, list_courses
 from log_utils import current_request_id, preview_text
 from rag.retriever import Retriever
+from rag.source_links import SourceLinks
 from rag.llm import chat_completion, chat_completion_stream, tool_call_args
 from rag.python_cell import PYTHON_CELL_TOOL, build_python_cell, student_code_context
 from rag import settings as RAG
@@ -138,6 +139,10 @@ _log_startup_config()
 # Load retriever once at startup (connects to Qdrant)
 retriever = Retriever()
 
+# Links from sources back to the published notes; rebuilt on every restart,
+# which rag_update_and_ingest does after the notes change
+source_links = SourceLinks.build(REPOS, SITE_URLS)
+
 # Max conversation turns to include in chat mode
 MAX_CHAT_TURNS = 20
 
@@ -237,6 +242,21 @@ def _extract_embedded_answer(problem: str) -> str:
     return sanitize_llm_text(parts[1]).strip()
 
 
+EXCERPT_CHARS = 600
+
+
+def _excerpt(text: str) -> str:
+    """The start of a chunk, cut at a word boundary, for the source panel."""
+    text = text.strip()
+    if len(text) <= EXCERPT_CHARS:
+        return text
+    cut = text[:EXCERPT_CHARS].rsplit(" ", 1)[0]
+    # Never end inside math: an unclosed $ would show as raw LaTeX
+    if cut.count("$") % 2:
+        cut = cut[: cut.rfind("$")]
+    return cut.rstrip() + " …"
+
+
 def render_sources(hits):
     """
     Build:
@@ -267,10 +287,14 @@ def render_sources(hits):
                 "tag": tag,
                 "source": src,
                 "heading": title,
+                "course": h.course,
                 "chunk_id": h.idx,
                 "score": h.score,
                 "chars": len(txt),
                 "truncated": (len((h.text or "")) > RAG.MAX_CHARS_PER_CHUNK),
+                # Where the student can read it in the published notes (None: no public page)
+                "url": source_links.url_for(h.course, src, h.chunk_index, title),
+                "excerpt": _excerpt(h.text or ""),
             }
         )
 

@@ -29,6 +29,8 @@ class Hit:
     text: str
     source: str
     heading: str | None = None
+    course: str | None = None
+    chunk_index: int | None = None  # position within its source file; None for old points without it
 
 
 class Retriever:
@@ -148,6 +150,8 @@ class Retriever:
                 text=payload.get("page_content", ""),
                 source=meta.get("source", ""),
                 heading=meta.get("heading"),
+                course=meta.get("course"),
+                chunk_index=meta.get("chunk_index"),
             )
             hits.append(hit)
 

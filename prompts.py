@@ -18,6 +18,7 @@ _ANSWER_NOTES_EN = (
     " - you MUST provide one example per answer. This is mandatory, don't skip it.\n"
     " - do not provide just the summary or just the example, you need to provide both.\n"
     "Be concise: 3–6 sentences max. No preamble.\n\n"
+    "Cite the sources you use with their tags, e.g. [S1] or [S2][S3], right after the statement they support. Only cite tags that appear in SOURCES.\n"
     "At the end of your response, include a single line exactly in this format:\n"
     "COVERAGE: full|partial|none"
 )
@@ -31,6 +32,7 @@ _ANSWER_NOTES_NO = (
     " – du MÅ gi ett eksempel per svar. Dette er obligatorisk, ikke hopp over det.\n"
     " – ikke gi bare et sammendrag eller bare eksempelet; du må gi begge deler.\n"
     "Vær konsis: 3–6 setninger maks. Ingen innledning.\n\n"
+    "Henvis til kildene du bruker med taggene deres, f.eks. [S1] eller [S2][S3], rett etter påstanden de støtter. Bruk bare tagger som finnes i SOURCES.\n"
     "Avslutt svaret med én linje i nøyaktig dette formatet:\n"
     "COVERAGE: full|partial|none"
 )
@@ -44,6 +46,7 @@ _ANSWER_NOTES_DE = (
     " – du MUSST ein Beispiel pro Antwort geben. Das ist verpflichtend, überspringe es nicht.\n"
     " – gib nicht nur eine Zusammenfassung oder nur das Beispiel; du musst beides liefern.\n"
     "Sei knapp: maximal 3–6 Sätze. Keine Einleitung.\n\n"
+    "Zitiere die verwendeten Quellen mit ihren Kennungen, z. B. [S1] oder [S2][S3], direkt nach der Aussage, die sie stützen. Verwende nur Kennungen, die in SOURCES vorkommen.\n"
     "Beende deine Antwort mit einer einzigen Zeile im genauen Format:\n"
     "COVERAGE: full|partial|none"
 )
@@ -66,6 +69,7 @@ _ANSWER_NOTES_CHAT_EN = (
     "- Include at least one concrete example and one intuitive interpretation.\n"
     "- You are allowed to be creative when giving examples, but keep them relevant and grounded in the concepts from the notes.\n\n"
     "{history_block}\n"
+    "Cite the sources you use with their tags, e.g. [S1] or [S2][S3], right after the statement they support. Only cite tags that appear in SOURCES.\n"
     "At the end of your response, include a single line exactly in this format:\n"
     "COVERAGE: full|partial|none"
 )
@@ -85,6 +89,7 @@ _ANSWER_NOTES_CHAT_NO = (
     "– Inkluder minst ett konkret eksempel og én intuitiv tolkning.\n"
     "– Du kan være kreativ når du gir eksempler, men hold dem relevante og forankret i konseptene fra notatene.\n\n"
     "{history_block}\n"
+    "Henvis til kildene du bruker med taggene deres, f.eks. [S1] eller [S2][S3], rett etter påstanden de støtter. Bruk bare tagger som finnes i SOURCES.\n"
     "Avslutt svaret med én linje i nøyaktig dette formatet:\n"
     "COVERAGE: full|partial|none"
 )
@@ -104,6 +109,7 @@ _ANSWER_NOTES_CHAT_DE = (
     "– Füge mindestens ein konkretes Beispiel und eine intuitive Interpretation hinzu.\n"
     "– Du darfst kreativ sein bei Beispielen, aber halte sie relevant und verankert in den Konzepten der Notizen.\n\n"
     "{history_block}\n"
+    "Zitiere die verwendeten Quellen mit ihren Kennungen, z. B. [S1] oder [S2][S3], direkt nach der Aussage, die sie stützen. Verwende nur Kennungen, die in SOURCES vorkommen.\n"
     "Beende deine Antwort mit einer einzigen Zeile im genauen Format:\n"
     "COVERAGE: full|partial|none"
 )
@@ -573,6 +579,7 @@ _ANSWER_NOTES_DA = (
     " – du SKAL give ét eksempel pr. svar. Dette er obligatorisk, spring det ikke over.\n"
     " – giv ikke bare et resumé eller bare eksemplet, du skal give begge dele.\n"
     "Vær kortfattet: 3–6 sætninger max. Intet indledning.\n\n"
+    "Henvis til de kilder, du bruger, med deres tags, f.eks. [S1] eller [S2][S3], lige efter det udsagn, de understøtter. Brug kun tags, der findes i SOURCES.\n"
     "Afslut dit svar med én linje i præcis dette format:\n"
     "COVERAGE: full|partial|none"
 )
@@ -592,6 +599,7 @@ _ANSWER_NOTES_CHAT_DA = (
     "– Inkluder mindst ét konkret eksempel og én intuitiv fortolkning.\n"
     "– Du må gerne være kreativ når du giver eksempler, men hold dem relevante og forankrede i koncepterne fra noterne.\n\n"
     "{history_block}\n"
+    "Henvis til de kilder, du bruger, med deres tags, f.eks. [S1] eller [S2][S3], lige efter det udsagn, de understøtter. Brug kun tags, der findes i SOURCES.\n"
     "Afslut dit svar med én linje i præcis dette format:\n"
     "COVERAGE: full|partial|none"
 )
@@ -753,6 +761,7 @@ _ANSWER_NOTES_SV = (
     " – du MÅSTE ge ett exempel per svar. Detta är obligatoriskt, hoppa inte över det.\n"
     " – ge inte bara en sammanfattning eller bara exemplet, du måste ge båda.\n"
     "Var koncis: 3–6 meningar max. Ingen inledning.\n\n"
+    "Hänvisa till källorna du använder med deras taggar, t.ex. [S1] eller [S2][S3], direkt efter påståendet de stöder. Använd bara taggar som finns i SOURCES.\n"
     "Avsluta ditt svar med en rad i exakt detta format:\n"
     "COVERAGE: full|partial|none"
 )
@@ -772,6 +781,7 @@ _ANSWER_NOTES_CHAT_SV = (
     "– Inkludera minst ett konkret exempel och en intuitiv tolkning.\n"
     "– Du kan vara kreativ när du ger exempel, men håll dem relevanta och förankrade i koncepten från anteckningarna.\n\n"
     "{history_block}\n"
+    "Hänvisa till källorna du använder med deras taggar, t.ex. [S1] eller [S2][S3], direkt efter påståendet de stöder. Använd bara taggar som finns i SOURCES.\n"
     "Avsluta ditt svar med en rad i exakt detta format:\n"
     "COVERAGE: full|partial|none"
 )

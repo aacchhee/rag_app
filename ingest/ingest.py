@@ -25,6 +25,13 @@ REPOS: list[tuple[Path, str]] = [
     (Path("/home/rag/ingmat3a_ntnu"), "IMAx3011"),
 ]
 
+# course -> published Quarto site of its repo, for linking answers back to the notes
+# (rag/source_links.py). A course without an entry gets no links.
+SITE_URLS: dict[str, str] = {
+    "IMAx2024": "https://aacchhee.github.io/ingmat2_ntnu/",
+    "IMAx3011": "https://aacchhee.github.io/ingmat3a_ntnu/",
+}
+
 # Course-scoped upload directory for PDFs uploaded via the ingest web UI.
 # Each subdirectory is a course name, e.g. /app/data/courses/ma1101/week1.pdf
 COURSES_DIR = Path("/app/data/courses")
