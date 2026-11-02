@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Source – RAG Assistant</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <!-- Theme and MathJax setup, shared with index.html -->
+  <script src="page-setup.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="markdown.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+</head>
+
+<!--
+  Source reader: an uploaded source (converted PDF, Markdown) that has no
+  public page, opened from a citation in the chat. /rag2/source rebuilds its
+  text from the indexed chunks, one page at a time; copyrighted sources come
+  back without text.
+  URL: reader.html?source=<path>&course=<course>&chunk=<index>&title=<label>
+-->
+<body class="reader-page">
+  <header class="reader-header">
+    <div class="reader-header-inner">
+      <h1 id="readerTitle" class="reader-title">Source</h1>
+      <div id="readerMeta" class="source-panel-meta"></div>
+    </div>
+  </header>
+
+  <main id="readerBody" class="reader-body" tabindex="-1" aria-live="polite">
+    <div class="thinking"><div class="thinking-dots"><span></span><span></span><span></span></div> Loading…</div>
+  </main>
+
+  <nav id="readerNav" class="reader-nav" aria-label="Pages" hidden>
+    <div class="reader-nav-inner">
+      <button id="readerPrev" class="source-reader-nav" type="button">← Previous</button>
+      <span id="readerPage" class="source-reader-page"></span>
+      <button id="readerNext" class="source-reader-nav" type="button">Next →</button>
+    </div>
+  </nav>
+
+  <script>
+    var params = new URLSearchParams(location.search);
+    var source = params.get("source") || "";
+    var course = params.get("course") || "";
+    var title = params.get("title") || source.split("/").pop() || "Source";
+    var pageLinks = { prev: null, next: null };
+
+    document.getElementById("readerTitle").textContent = title;
+    document.getElementById("readerMeta").textContent = [course, source].filter(Boolean).join(" · ");
+    document.title = title + " – Source";
+
+    function showMessage(html) {
+      document.getElementById("readerBody").innerHTML = html;
+      document.getElementById("readerNav").hidden = true;
+    }
+
+    async function typeset() {
+      if (window.MathJax && MathJax.typesetPromise) {
+        try { await MathJax.typesetPromise([document.getElementById("readerBody")]); } catch (e) { /* show the TeX */ }
+      }
+    }
+
+    // Wait for MathJax (loaded with defer) before typesetting the first page
+    function mathReady() {
+      return new Promise(function (resolve) {
+        if (window.MathJax && MathJax.startup && MathJax.startup.promise) return MathJax.startup.promise.then(resolve, resolve);
+        window.addEventListener("load", function () {
+          if (window.MathJax && MathJax.startup && MathJax.startup.promise) MathJax.startup.promise.then(resolve, resolve);
+          else resolve();
+        });
+      });
+    }
+
+    async function load(chunk, scrollToCited) {
+      if (!source) {
+        showMessage('<p class="source-panel-nolink">No source given.</p>');
+        return;
+      }
+      var qs = "?source=" + encodeURIComponent(source) +
+        (course ? "&course=" + encodeURIComponent(course) : "") +
+        (chunk !== null && chunk !== undefined && chunk !== "" ? "&chunk=" + encodeURIComponent(chunk) : "");
+      var data;
+      try {
+        var response = await fetch("/rag2/source" + qs);
+        if (response.status === 404) {
+          showMessage('<p class="source-panel-nolink">This source is no longer available. It may have been removed or re-indexed.</p>');
+          return;
+        }
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        data = await response.json();
+      } catch (e) {
+        showMessage('<p class="source-panel-nolink">Could not load this source.</p>');
+        return;
+      }
+
+      if (data.copyrighted) {
+        showMessage('<div class="source-copyright"><strong>© Copyrighted material</strong>' +
+          '<p>This source is protected by copyright, so its text can\'t be shown here. ' +
+          'Use the reference above to look it up yourself.</p></div>');
+        return;
+      }
+
+      var body = document.getElementById("readerBody");
+      body.innerHTML = renderMarkdown(data.text || "");
+      pageLinks.prev = data.prev_chunk;
+      pageLinks.next = data.next_chunk;
+      document.getElementById("readerPage").textContent = "Page " + data.page + " of " + data.pages;
+      document.getElementById("readerPrev").disabled = data.prev_chunk === null || data.prev_chunk === undefined;
+      document.getElementById("readerNext").disabled = data.next_chunk === null || data.next_chunk === undefined;
+      document.getElementById("readerNav").hidden = false;
+
+      // Keep the page in the address, so a reload or a shared link opens it again
+      var url = new URL(location.href);
+      if (chunk !== null && chunk !== undefined) url.searchParams.set("chunk", chunk);
+      history.replaceState(null, "", url);
+
+      await mathReady();
+      await typeset();
+
+      var mark = document.getElementById("source-cited");
+      if (scrollToCited && mark) {
+        // The paragraph the answer cited: below the sticky header, marked briefly
+        var target = mark.parentElement && mark.parentElement !== body && !mark.parentElement.textContent.trim()
+          ? mark.parentElement.nextElementSibling : mark.nextElementSibling;
+        var header = document.querySelector(".reader-header").offsetHeight;
+        window.scrollTo(0, Math.max(0, mark.getBoundingClientRect().top + window.scrollY - header - 16));
+        if (target) target.classList.add("source-cited-flash");
+      } else {
+        window.scrollTo(0, 0);
+      }
+      body.focus({ preventScroll: true });
+    }
+
+    document.getElementById("readerPrev").addEventListener("click", function () { load(pageLinks.prev, false); });
+    document.getElementById("readerNext").addEventListener("click", function () { load(pageLinks.next, false); });
+
+    load(params.get("chunk"), true);
+  </script>
+</body>
+
+</html>

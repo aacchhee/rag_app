@@ -2891,11 +2891,9 @@ details > summary.box-title {
   margin: 4px 0 0;
 }
 
-.source-reader-body .source-copyright {
-  margin: 0;
-}
-
 .source-panel-open {
+  display: inline-block;
+  text-decoration: none;
   min-height: 0;
   padding: 6px 12px;
   border: 1px solid var(--green);
@@ -2906,85 +2904,101 @@ details > summary.box-title {
   font-weight: 650;
 }
 
-/* Source reader: an uploaded source's text, page by page */
-.source-reader {
-  position: fixed;
-  inset: 0;
-  z-index: 460;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: var(--modal-overlay);
-  backdrop-filter: blur(2px);
-}
-
-.source-reader[hidden] {
-  display: none;
-}
-
-.source-reader-box {
-  box-sizing: border-box;
-  width: min(820px, 100%);
-  max-height: 100%;
+/* Source reader page (reader.html): an uploaded source's text, page by page */
+.reader-page {
+  margin: 0;
+  /* The app pins body to the window height (html, body { height: 100% }); this
+     page grows with its text, so the sticky page nav stays at the window bottom */
+  height: auto;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--surface);
+  background: var(--bg);
   color: var(--text);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, .22);
 }
 
-.source-reader-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 16px 12px 10px 22px;
+.reader-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   border-bottom: 1px solid var(--line);
+  background: var(--topbar-bg);
+  backdrop-filter: blur(14px);
 }
 
-.source-reader-heading {
-  flex: 1;
-  min-width: 0;
+.reader-header-inner,
+.reader-nav-inner {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 14px 24px;
 }
 
-.source-reader-title {
+.reader-title {
   margin: 0 0 2px;
-  font-size: 17px;
+  font-family: var(--font-sans);
+  font-size: 19px;
   font-weight: 650;
+  letter-spacing: normal;
 }
 
-.source-reader-header .source-panel-meta {
+.reader-header .source-panel-meta {
   padding: 0;
 }
 
-.source-reader-body {
+.reader-body {
   flex: 1;
-  min-height: 160px;
-  overflow: auto;
-  padding: 18px 22px;
-  font-size: 15px;
-  line-height: 1.7;
-}
-
-.source-reader-body h3 {
-  margin: 1.4em 0 .4em;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 24px 40px;
   font-size: 16px;
+  line-height: 1.75;
+  outline: none;
 }
 
-.source-reader-body h3:first-child {
+.reader-body h3 {
+  margin: 1.6em 0 .4em;
+  font-size: 18px;
+}
+
+.reader-body h3:first-child {
   margin-top: 0;
 }
 
-.source-reader-body pre {
+.reader-body pre {
   overflow-x: auto;
 }
 
-.source-reader-body table {
+.reader-body table {
   display: block;
   max-width: 100%;
   overflow-x: auto;
+}
+
+.reader-body .source-copyright {
+  margin: 0;
+}
+
+.reader-nav {
+  position: sticky;
+  bottom: 0;
+  border-top: 1px solid var(--line);
+  background: var(--topbar-bg);
+  backdrop-filter: blur(14px);
+}
+
+.reader-nav[hidden] {
+  display: none;
+}
+
+.reader-nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 
 /* The paragraph the answer cited, marked briefly when the reader opens */
@@ -3000,15 +3014,6 @@ details > summary.box-title {
 
 @media (prefers-reduced-motion: reduce) {
   .source-cited-flash { animation: none; outline: 2px solid var(--green-border); outline-offset: 4px; }
-}
-
-.source-reader-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 16px;
-  border-top: 1px solid var(--line);
 }
 
 .source-reader-nav {
