@@ -232,9 +232,32 @@
     </div>
     <div id="sourcePanelMeta" class="source-panel-meta"></div>
     <div id="sourcePanelExcerpt" class="source-panel-excerpt"></div>
+    <div id="sourcePanelCopyright" class="source-copyright" hidden>
+      <strong>© Copyrighted material</strong>
+      <p>This source is protected by copyright, so its text can't be shown here. The answer may still draw on it; use the reference above to look it up yourself.</p>
+    </div>
     <div class="source-panel-footer">
       <a id="sourcePanelLink" class="source-panel-link" target="_blank" rel="noopener">Open in lecture notes ↗</a>
-      <span id="sourcePanelNoLink" class="source-panel-nolink">This source has no public page.</span>
+      <button id="sourcePanelOpen" class="source-panel-open" type="button">Open source</button>
+    </div>
+  </div>
+
+  <!-- Source reader: an uploaded source's text, rebuilt page by page from the index -->
+  <div id="sourceReader" class="source-reader" hidden>
+    <div class="source-reader-box" role="dialog" aria-modal="true" aria-labelledby="sourceReaderTitle">
+      <div class="source-reader-header">
+        <div class="source-reader-heading">
+          <h2 id="sourceReaderTitle" class="source-reader-title"></h2>
+          <div id="sourceReaderMeta" class="source-panel-meta"></div>
+        </div>
+        <button id="sourceReaderClose" class="source-panel-close" type="button" aria-label="Close source">×</button>
+      </div>
+      <div id="sourceReaderBody" class="source-reader-body" tabindex="-1"></div>
+      <div class="source-reader-footer">
+        <button id="sourceReaderPrev" class="source-reader-nav" type="button">← Previous</button>
+        <span id="sourceReaderPage" class="source-reader-page" aria-live="polite"></span>
+        <button id="sourceReaderNext" class="source-reader-nav" type="button">Next →</button>
+      </div>
     </div>
   </div>
 
@@ -1914,7 +1937,8 @@
         seen[key] = true;
         var n = String(src.tag || "").replace(/\D/g, "");
         chips += '<button type="button" class="source-chip" data-turn="' + turnIndex + '" data-tag="' + n + '">' +
-          '<span class="source-chip-tag">' + n + '</span>' + escapeHtml(sourceLabel(src)) + '</button>';
+          '<span class="source-chip-tag">' + n + '</span>' + escapeHtml(sourceLabel(src)) +
+          (src.copyrighted ? ' <span class="source-chip-copyright" title="Copyrighted">©</span>' : '') + '</button>';
       });
       return '<div class="sources-row"><span class="sources-label">' + (cited.length ? "Sources" : "Based on") + '</span>' + chips + '</div>';
     }
@@ -1922,7 +1946,11 @@
     // Stored with each turn: what the panel needs, without scores and ids
     function compactSources(list) {
       return (Array.isArray(list) ? list : []).map(function (s) {
-        return { tag: s.tag, heading: s.heading || "", source: s.source || "", course: s.course || "", url: s.url || "", excerpt: s.excerpt || "" };
+        return {
+          tag: s.tag, heading: s.heading || "", source: s.source || "", course: s.course || "",
+          url: s.url || "", excerpt: s.excerpt || "", copyrighted: !!s.copyrighted,
+          chunk_index: typeof s.chunk_index === "number" ? s.chunk_index : null
+        };
       });
     }
 
@@ -1933,16 +1961,16 @@
       $("sourcePanelTag").textContent = n;
       $("sourcePanelTitle").textContent = sourceLabel(src);
       $("sourcePanelMeta").textContent = [src.course, src.source].filter(Boolean).join(" · ");
-      $("sourcePanelExcerpt").innerHTML = src.excerpt ? renderMarkdown(src.excerpt) : "";
-      if (src.url) {
-        $("sourcePanelLink").href = src.url;
-        $("sourcePanelLink").hidden = false;
-        $("sourcePanelNoLink").hidden = true;
-      } else {
-        $("sourcePanelLink").removeAttribute("href");
-        $("sourcePanelLink").hidden = true;
-        $("sourcePanelNoLink").hidden = false;
-      }
+      // Three cases: copyrighted (reference only), published notes (link), uploaded (reader)
+      var copyrighted = !!src.copyrighted;
+      $("sourcePanelCopyright").hidden = !copyrighted;
+      $("sourcePanelExcerpt").hidden = copyrighted || !src.excerpt;
+      $("sourcePanelExcerpt").innerHTML = !copyrighted && src.excerpt ? renderMarkdown(src.excerpt) : "";
+      if (!copyrighted && src.url) $("sourcePanelLink").href = src.url;
+      else $("sourcePanelLink").removeAttribute("href");
+      $("sourcePanelLink").hidden = copyrighted || !src.url;
+      $("sourcePanelOpen").hidden = copyrighted || !!src.url;
+      $("sourcePanelOpen").onclick = function () { openSourceReader(src, src.chunk_index); };
       panel.hidden = false;
       sourcePanelTrigger = trigger || null;
       positionSourcePanel(trigger);
@@ -1972,6 +2000,75 @@
       panel.hidden = true;
       if (sourcePanelTrigger && document.body.contains(sourcePanelTrigger)) sourcePanelTrigger.focus();
       sourcePanelTrigger = null;
+    }
+
+    // --- Source reader ---
+    // An uploaded source (no public page) opened in the app: one page of its
+    // text at a time, rebuilt by the backend from the indexed chunks.
+    var sourceReaderState = null; // { src, prev, next, trigger }
+
+    async function openSourceReader(src, chunkIndex) {
+      var reader = $("sourceReader");
+      var firstOpen = reader.hidden;
+      if (firstOpen) {
+        // Focus returns to the citation the panel was opened from
+        sourceReaderState = { src: src, trigger: sourcePanelTrigger || document.activeElement };
+        closeSourcePanel();
+        reader.hidden = false;
+      }
+      $("sourceReaderTitle").textContent = sourceLabel(src);
+      $("sourceReaderMeta").textContent = [src.course, src.source].filter(Boolean).join(" · ");
+      $("sourceReaderBody").innerHTML = '<div class="thinking"><div class="thinking-dots"><span></span><span></span><span></span></div> Loading…</div>';
+      $("sourceReaderPrev").disabled = true;
+      $("sourceReaderNext").disabled = true;
+      $("sourceReaderPage").textContent = "";
+      if (firstOpen) $("sourceReaderClose").focus();
+
+      try {
+        var qs = "?source=" + encodeURIComponent(src.source) +
+          (src.course ? "&course=" + encodeURIComponent(src.course) : "") +
+          (typeof chunkIndex === "number" ? "&chunk=" + chunkIndex : "");
+        var response = await fetch("/rag2/source" + qs);
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        var data = await response.json();
+        if (reader.hidden) return; // closed while loading
+        if (data.copyrighted) {
+          // Tagged after the answer was given: the backend sends no text
+          $("sourceReaderBody").innerHTML = '<div class="source-copyright"><strong>© Copyrighted material</strong>' +
+            '<p>This source is protected by copyright, so its text can\'t be shown here.</p></div>';
+          return;
+        }
+        $("sourceReaderBody").innerHTML = renderMarkdown(data.text || "");
+        $("sourceReaderPage").textContent = "Page " + data.page + " of " + data.pages;
+        sourceReaderState.prev = data.prev_chunk;
+        sourceReaderState.next = data.next_chunk;
+        $("sourceReaderPrev").disabled = data.prev_chunk === null || data.prev_chunk === undefined;
+        $("sourceReaderNext").disabled = data.next_chunk === null || data.next_chunk === undefined;
+        await typesetMath();
+        // Scroll to where the cited part starts and mark it briefly
+        var mark = $("source-cited");
+        var body = $("sourceReaderBody");
+        if (mark) {
+          var target = mark.parentElement && mark.parentElement !== body && mark.parentElement.textContent.trim() === ""
+            ? mark.parentElement.nextElementSibling : mark.nextElementSibling;
+          body.scrollTop = Math.max(0, mark.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 24);
+          if (target) target.classList.add("source-cited-flash");
+        } else {
+          body.scrollTop = 0;
+        }
+      } catch (e) {
+        logDebug("Source reader failed", { error: String(e) });
+        $("sourceReaderBody").innerHTML = '<p class="source-panel-nolink">Could not load this source.</p>';
+      }
+    }
+
+    function closeSourceReader() {
+      var reader = $("sourceReader");
+      if (reader.hidden) return;
+      reader.hidden = true;
+      var trigger = sourceReaderState && sourceReaderState.trigger;
+      sourceReaderState = null;
+      if (trigger && document.body.contains(trigger)) trigger.focus();
     }
 
     // Previous turns as the backend reads them; old [S1] tags would point at
@@ -2980,7 +3077,31 @@
       });
       $("sourcePanelClose").addEventListener("click", closeSourcePanel);
       document.addEventListener("keydown", function (e) {
-        if (e.key === "Escape" && !$("sourcePanel").hidden) closeSourcePanel();
+        if (e.key !== "Escape") return;
+        if (!$("sourceReader").hidden) closeSourceReader();
+        else if (!$("sourcePanel").hidden) closeSourcePanel();
+      });
+
+      // Source reader
+      $("sourceReaderClose").addEventListener("click", closeSourceReader);
+      $("sourceReader").addEventListener("click", function (e) {
+        if (e.target === this) closeSourceReader(); // the backdrop
+      });
+      $("sourceReaderPrev").addEventListener("click", function () {
+        if (sourceReaderState) openSourceReader(sourceReaderState.src, sourceReaderState.prev);
+      });
+      $("sourceReaderNext").addEventListener("click", function () {
+        if (sourceReaderState) openSourceReader(sourceReaderState.src, sourceReaderState.next);
+      });
+      // Keep Tab inside the reader while it is open
+      $("sourceReader").addEventListener("keydown", function (e) {
+        if (e.key !== "Tab") return;
+        var items = Array.prototype.filter.call(this.querySelectorAll("button, [href], [tabindex]"),
+          function (el) { return !el.disabled && el.offsetParent !== null; });
+        if (!items.length) return;
+        var first = items[0], last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
       });
       window.addEventListener("resize", function () { positionSourcePanel(sourcePanelTrigger); });
       // Follow the citation (math typesetting can also shift the chat)

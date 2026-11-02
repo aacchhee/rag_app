@@ -14,6 +14,7 @@ from ingest.ingest import REPOS, SITE_URLS, list_courses
 from log_utils import current_request_id, preview_text
 from rag.retriever import Retriever
 from rag.source_links import SourceLinks
+from rag.source_reader import build_page
 from rag.llm import chat_completion, chat_completion_stream, tool_call_args
 from rag.python_cell import PYTHON_CELL_TOOL, build_python_cell, student_code_context
 from rag import settings as RAG
@@ -289,12 +290,15 @@ def render_sources(hits):
                 "heading": title,
                 "course": h.course,
                 "chunk_id": h.idx,
+                "chunk_index": h.chunk_index,  # for opening the source reader at this chunk
                 "score": h.score,
                 "chars": len(txt),
                 "truncated": (len((h.text or "")) > RAG.MAX_CHARS_PER_CHUNK),
                 # Where the student can read it in the published notes (None: no public page)
                 "url": source_links.url_for(h.course, src, h.chunk_index, title),
-                "excerpt": _excerpt(h.text or ""),
+                # Copyrighted text is used for the answer but never sent to the browser
+                "copyrighted": h.copyrighted,
+                "excerpt": "" if h.copyrighted else _excerpt(h.text or ""),
             }
         )
 
@@ -1392,6 +1396,56 @@ def exercise_chat():
 @app.get("/courses")
 def get_courses():
     return jsonify(list_courses())
+
+
+# Recently opened sources: paging through a large file (a book) re-reads it
+# from Qdrant otherwise. Short-lived, so a copyright change applies quickly.
+_SOURCE_CACHE: dict[tuple[str, str], tuple[float, list]] = {}
+_SOURCE_CACHE_SECONDS = 60
+_SOURCE_CACHE_MAX = 16
+
+
+def _source_chunks(source: str, course: str | None) -> list:
+    key = (course or "", source)
+    cached = _SOURCE_CACHE.get(key)
+    if cached and time.time() - cached[0] < _SOURCE_CACHE_SECONDS:
+        return cached[1]
+    chunks = retriever.source_chunks(source, course)
+    if len(_SOURCE_CACHE) >= _SOURCE_CACHE_MAX:
+        _SOURCE_CACHE.pop(min(_SOURCE_CACHE, key=lambda k: _SOURCE_CACHE[k][0]))
+    _SOURCE_CACHE[key] = (time.time(), chunks)
+    return chunks
+
+
+@app.get("/source")
+def get_source():
+    """
+    One page of a source's text, rebuilt from its chunks, for the source reader.
+    Copyrighted sources return only that they are copyrighted, never text.
+    """
+    request_id = current_request_id()
+    source = (request.args.get("source") or "").strip()
+    course = (request.args.get("course") or "").strip() or None
+    try:
+        chunk_index = int(request.args.get("chunk", ""))
+    except ValueError:
+        chunk_index = None
+    if not source:
+        return jsonify(error="Missing 'source'", request_id=request_id), 400
+
+    chunks = _source_chunks(source, course)
+    if not chunks:
+        return jsonify(error="Unknown source", request_id=request_id), 404
+
+    copyrighted = any(c.copyrighted for c in chunks)
+    app.logger.info(
+        "[req:%s] /source source=%s course=%s chunk=%s chunks=%d copyrighted=%s",
+        request_id, source, course or "-", chunk_index, len(chunks), copyrighted,
+    )
+    result = {"source": source, "course": course or chunks[0].course, "copyrighted": copyrighted}
+    if not copyrighted:
+        result.update(build_page(chunks, chunk_index))
+    return jsonify(result)
 
 
 @app.get("/status-page")

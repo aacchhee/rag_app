@@ -2863,3 +2863,170 @@ details > summary.box-title {
 .source-panel-nolink {
   color: var(--muted);
 }
+
+.source-panel-excerpt[hidden],
+.source-copyright[hidden],
+.source-panel-open[hidden] {
+  display: none;
+}
+
+.source-chip-copyright {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+/* Copyrighted source: a notice instead of its text */
+.source-copyright {
+  margin: 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--task-bg);
+  color: var(--task-text);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.source-copyright p {
+  margin: 4px 0 0;
+}
+
+.source-reader-body .source-copyright {
+  margin: 0;
+}
+
+.source-panel-open {
+  min-height: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--green);
+  border-radius: 8px;
+  background: var(--green);
+  color: var(--text-inverse);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+/* Source reader: an uploaded source's text, page by page */
+.source-reader {
+  position: fixed;
+  inset: 0;
+  z-index: 460;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--modal-overlay);
+  backdrop-filter: blur(2px);
+}
+
+.source-reader[hidden] {
+  display: none;
+}
+
+.source-reader-box {
+  box-sizing: border-box;
+  width: min(820px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .22);
+}
+
+.source-reader-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 12px 10px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.source-reader-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.source-reader-title {
+  margin: 0 0 2px;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.source-reader-header .source-panel-meta {
+  padding: 0;
+}
+
+.source-reader-body {
+  flex: 1;
+  min-height: 160px;
+  overflow: auto;
+  padding: 18px 22px;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.source-reader-body h3 {
+  margin: 1.4em 0 .4em;
+  font-size: 16px;
+}
+
+.source-reader-body h3:first-child {
+  margin-top: 0;
+}
+
+.source-reader-body pre {
+  overflow-x: auto;
+}
+
+.source-reader-body table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* The paragraph the answer cited, marked briefly when the reader opens */
+.source-cited-flash {
+  animation: source-cited-flash 2.4s ease-out;
+  border-radius: 6px;
+}
+
+@keyframes source-cited-flash {
+  0%, 40% { background: var(--code-selection); box-shadow: 0 0 0 6px var(--code-selection); }
+  100% { background: transparent; box-shadow: 0 0 0 6px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .source-cited-flash { animation: none; outline: 2px solid var(--green-border); outline-offset: 4px; }
+}
+
+.source-reader-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.source-reader-nav {
+  min-height: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--green-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.source-reader-nav:disabled {
+  opacity: .4;
+}
+
+.source-reader-page {
+  font-size: 12.5px;
+  color: var(--muted);
+}

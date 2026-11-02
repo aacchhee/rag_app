@@ -11,7 +11,7 @@ import uuid
 from langchain_core.documents import Document
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointIdsList, VectorParams
+from qdrant_client.models import Distance, FieldCondition, Filter, MatchValue, PointIdsList, VectorParams
 
 from ingest.chunker import chunk_markdown
 from ingest.embed import get_embeddings_model
@@ -35,6 +35,39 @@ SITE_URLS: dict[str, str] = {
 # Course-scoped upload directory for PDFs uploaded via the ingest web UI.
 # Each subdirectory is a course name, e.g. /app/data/courses/ma1101/week1.pdf
 COURSES_DIR = Path("/app/data/courses")
+
+# Uploaded files marked as copyrighted in the ingest UI, by source path as
+# stored in Qdrant (e.g. "IMAx3011/book.md"). Answers may still use them, but
+# the chat UI never shows their text: each chunk carries metadata.copyrighted.
+RIGHTS_FILE = COURSES_DIR / "rights.json"
+
+
+def load_copyrighted() -> set[str]:
+    try:
+        data = json.loads(RIGHTS_FILE.read_text(encoding="utf-8"))
+        return set(data.get("copyrighted", []))
+    except (OSError, ValueError):
+        return set()
+
+
+def save_copyrighted(sources: set[str]) -> None:
+    RIGHTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = RIGHTS_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"copyrighted": sorted(sources)}, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(RIGHTS_FILE)
+
+
+def set_copyrighted_in_qdrant(source: str, copyrighted: bool) -> None:
+    """Tag an already indexed source's chunks, without re-embedding."""
+    client = QdrantClient(url=Config.QDRANT_URL, api_key=Config.QDRANT_API_KEY)
+    if Config.QDRANT_COLLECTION not in [c.name for c in client.get_collections().collections]:
+        return
+    client.set_payload(
+        collection_name=Config.QDRANT_COLLECTION,
+        payload={"copyrighted": copyrighted},
+        key="metadata",
+        points=Filter(must=[FieldCondition(key="metadata.source", match=MatchValue(value=source))]),
+    )
 
 
 def _course_for(f: Path) -> str | None:
@@ -197,6 +230,7 @@ def main(force_full: bool = False):
         embedding=embeddings,
     )
 
+    copyrighted = load_copyrighted()
     to_delete_ids: list[str] = []
     to_upsert_docs: list[Document] = []
     to_upsert_ids: list[str] = []
@@ -241,6 +275,8 @@ def main(force_full: bool = False):
             }
             if course:
                 meta["course"] = course
+            if rel in copyrighted:
+                meta["copyrighted"] = True
             to_upsert_docs.append(
                 Document(
                     page_content=c["text"],

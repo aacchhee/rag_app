@@ -79,6 +79,14 @@ location = /rag2/assess {
     proxy_read_timeout 120s;
 }
 
+# Source reader: a page of an uploaded source's text, rebuilt from the index
+location = /rag2/source {
+    proxy_pass http://unix:/run/rag2/rag2.sock:/source;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
 # --- RAG UI (static) ---
 location ^~ /rag/ {
 

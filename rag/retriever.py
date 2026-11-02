@@ -31,6 +31,7 @@ class Hit:
     heading: str | None = None
     course: str | None = None
     chunk_index: int | None = None  # position within its source file; None for old points without it
+    copyrighted: bool = False  # marked in the ingest UI: usable for answers, never shown to students
 
 
 class Retriever:
@@ -152,6 +153,7 @@ class Retriever:
                 heading=meta.get("heading"),
                 course=meta.get("course"),
                 chunk_index=meta.get("chunk_index"),
+                copyrighted=bool(meta.get("copyrighted")),
             )
             hits.append(hit)
 
@@ -168,4 +170,41 @@ class Retriever:
                     _preview(hit.text or ""),
                 )
 
+        return hits
+
+    def source_chunks(self, source: str, course: str | None = None) -> List[Hit]:
+        """Every chunk of one source file, in document order (for the source reader)."""
+        if not self._ensure_ready():
+            return []
+        must = [FieldCondition(key="metadata.source", match=MatchValue(value=source))]
+        if course:
+            must.append(FieldCondition(key="metadata.course", match=MatchValue(value=course)))
+
+        hits: List[Hit] = []
+        offset = None
+        while True:
+            points, offset = self.client.scroll(
+                collection_name=self.collection,
+                scroll_filter=Filter(must=must),
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                meta = payload.get("metadata", {})
+                hits.append(Hit(
+                    idx=meta.get("chunk_index", 0),
+                    score=0.0,
+                    text=payload.get("page_content", ""),
+                    source=meta.get("source", ""),
+                    heading=meta.get("heading"),
+                    course=meta.get("course"),
+                    chunk_index=meta.get("chunk_index"),
+                    copyrighted=bool(meta.get("copyrighted")),
+                ))
+            if offset is None:
+                break
+        hits.sort(key=lambda h: h.chunk_index if h.chunk_index is not None else 0)
         return hits

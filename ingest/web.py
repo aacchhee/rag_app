@@ -20,7 +20,10 @@ from pathlib import Path
 from flask import Flask, Response, jsonify, request
 from werkzeug.utils import secure_filename
 
-from ingest.ingest import _load_manifest, COURSES_DIR, list_courses, main as run_ingest
+from ingest.ingest import (
+    _load_manifest, _rel_source, COURSES_DIR, list_courses, load_copyrighted, main as run_ingest,
+    save_copyrighted, set_copyrighted_in_qdrant,
+)
 
 # --- Event history (JSONL) ---
 HISTORY_FILE = COURSES_DIR.parent / "ingest_history.jsonl"
@@ -256,12 +259,15 @@ def list_files():
     d = _course_upload_dir(course) if course else COURSES_DIR
     if not d.exists():
         return jsonify([])
-    names = sorted(
-        p.name
-        for p in d.rglob("*")
-        if p.is_file() and p.suffix.lower().lstrip(".") in SUPPORTED_EXTS
+    copyrighted = load_copyrighted()
+    files = sorted(
+        (p for p in d.rglob("*") if p.is_file() and p.suffix.lower().lstrip(".") in SUPPORTED_EXTS),
+        key=lambda p: p.name,
     )
-    return jsonify(names)
+    return jsonify([
+        {"name": p.name, "source": _rel_source(p), "copyrighted": _rel_source(p) in copyrighted}
+        for p in files
+    ])
 
 
 @app.post("/files")
@@ -278,6 +284,8 @@ def upload_file():
 
     uploaded: list[str] = []
     skipped: list[str] = []
+    mark_copyrighted = request.form.get("copyrighted") == "true"
+    copyrighted = load_copyrighted()
 
     for file in files:
         filename = secure_filename(file.filename)
@@ -295,9 +303,13 @@ def upload_file():
 
         file.save(target_dir / filename)
         uploaded.append(filename)
+        if mark_copyrighted:
+            copyrighted.add(_rel_source(target_dir / filename))
 
     if not uploaded and skipped:
         return jsonify({"error": "no valid files to upload", "skipped": skipped}), 400
+    if mark_copyrighted:
+        save_copyrighted(copyrighted)
 
     return jsonify({
         "uploaded": uploaded,
@@ -319,9 +331,42 @@ def delete_file(filename):
     target_dir = _course_upload_dir(course) if course else COURSES_DIR / "uncategorized"
     target = target_dir / safe_name
     if safe_name and target.is_file() and target.suffix.lower().lstrip(".") in SUPPORTED_EXTS:
+        source = _rel_source(target)
         target.unlink()
+        copyrighted = load_copyrighted()
+        if source in copyrighted:
+            copyrighted.discard(source)
+            save_copyrighted(copyrighted)
         return jsonify({"deleted": safe_name})
     return jsonify({"error": "not found"}), 404
+
+
+@app.post("/files/copyright")
+def set_file_copyright():
+    """Mark an uploaded file as copyrighted (or not): the chat UI then never shows its text."""
+    _bump_activity()
+    data = request.get_json(force=True) or {}
+    course = (data.get("course") or "").strip()
+    safe_name = secure_filename(data.get("name") or "")
+    target_dir = _course_upload_dir(course) if course else COURSES_DIR / "uncategorized"
+    target = target_dir / safe_name
+    if not safe_name or not target.is_file():
+        return jsonify({"error": "not found"}), 404
+    source = _rel_source(target)
+    flag = bool(data.get("copyrighted"))
+    copyrighted = load_copyrighted()
+    if flag:
+        copyrighted.add(source)
+    else:
+        copyrighted.discard(source)
+    save_copyrighted(copyrighted)
+    # Already indexed chunks get the tag now; new ones get it at their ingest
+    try:
+        set_copyrighted_in_qdrant(source, flag)
+    except Exception as e:
+        return jsonify({"error": f"saved, but updating the index failed: {e}", "source": source}), 500
+    _log_event("copyright", source=source, copyrighted=flag)
+    return jsonify({"source": source, "copyrighted": flag})
 
 
 _PAGE = """<!doctype html>
@@ -345,6 +390,10 @@ _PAGE = """<!doctype html>
   ul#file-list li { display: flex; align-items: center; justify-content: space-between;
                     padding: 0.4rem 0.6rem; border-bottom: 1px solid #ddd; }
   ul#file-list li button { font-size: 0.85rem; padding: 0.2rem 0.6rem; }
+  ul#file-list li .file-actions { display: flex; align-items: center; gap: 0.8rem; flex-shrink: 0; }
+  ul#file-list li label { font-size: 0.85rem; white-space: nowrap; }
+  .copyright-label { display: inline-block; margin-top: 0.5rem; font-size: 0.9rem; }
+  .hint { color: #666; }
   #upload-msg { margin-top: 0.5rem; font-size: 0.9rem; }
   .course-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
   .course-row input { font-size: 1rem; padding: 0.35rem 0.5rem; flex: 1; }
@@ -370,7 +419,9 @@ _PAGE = """<!doctype html>
   <p>Select a course, then upload a PDF, Markdown, or QMD file. It will be ingested into that course.</p>
   <select id="course-select"><option value="">-- select course --</option></select><br><br>
   <input type="file" id="file-input" multiple accept=".pdf,.md,.qmd,application/pdf,text/markdown">
-  <button onclick="uploadFile()">Upload</button>
+  <button onclick="uploadFile()">Upload</button><br>
+  <label class="copyright-label"><input type="checkbox" id="upload-copyrighted"> Copyrighted material
+    <span class="hint">(answers may use it, but students can't open its text)</span></label>
   <div id="upload-msg"></div>
   <ul id="file-list"></ul>
 
@@ -463,18 +514,44 @@ async function loadFiles() {
   const course = courseSelect.value;
   const qs = course ? '?course=' + encodeURIComponent(course) : '';
   const res = await fetch('/files' + qs);
-  const names = await res.json();
+  const files = await res.json();
   fileListEl.innerHTML = '';
-  for (const name of names) {
+  for (const file of files) {
     const li = document.createElement('li');
     const label = document.createElement('span');
-    label.textContent = name;
+    label.textContent = file.name;
+    const actions = document.createElement('span');
+    actions.className = 'file-actions';
+    const crLabel = document.createElement('label');
+    const cr = document.createElement('input');
+    cr.type = 'checkbox';
+    cr.checked = !!file.copyrighted;
+    cr.onchange = () => setCopyright(file.name, cr);
+    crLabel.appendChild(cr);
+    crLabel.appendChild(document.createTextNode(' Copyrighted'));
     const delBtn = document.createElement('button');
     delBtn.textContent = 'Delete';
-    delBtn.onclick = () => deleteFile(name);
+    delBtn.onclick = () => deleteFile(file.name);
+    actions.appendChild(crLabel);
+    actions.appendChild(delBtn);
     li.appendChild(label);
-    li.appendChild(delBtn);
+    li.appendChild(actions);
     fileListEl.appendChild(li);
+  }
+}
+
+async function setCopyright(name, checkbox) {
+  checkbox.disabled = true;
+  const res = await fetch('/files/copyright', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ course: courseSelect.value, name, copyrighted: checkbox.checked }),
+  });
+  const body = await res.json().catch(() => ({}));
+  checkbox.disabled = false;
+  if (!res.ok) {
+    alert(body.error || 'Failed');
+    if (!body.source) checkbox.checked = !checkbox.checked; // not saved at all
   }
 }
 
@@ -494,6 +571,7 @@ async function uploadFile() {
     formData.append('file', files[i]);
   }
   formData.append('course', course);
+  formData.append('copyrighted', document.getElementById('upload-copyrighted').checked ? 'true' : 'false');
   const res = await fetch('/files', { method: 'POST', body: formData });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -509,6 +587,7 @@ async function uploadFile() {
   }
   uploadMsgEl.textContent = msgParts.join(' | ');
   fileInputEl.value = '';
+  document.getElementById('upload-copyrighted').checked = false;
   loadFiles();
 }
 
