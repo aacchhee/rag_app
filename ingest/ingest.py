@@ -16,6 +16,7 @@ from qdrant_client.models import Distance, FieldCondition, Filter, MatchValue, P
 from ingest.chunker import CHUNKER_VERSION, chunk_markdown
 from ingest.embed import get_embeddings_model
 from ingest.pdf import convert_pdf_to_markdown
+from ingest.runs import DATA_DIR, acquire_lock, is_running, tracked_run
 from config import Config
 
 
@@ -34,7 +35,7 @@ SITE_URLS: dict[str, str] = {
 
 # Course-scoped upload directory for PDFs uploaded via the ingest web UI.
 # Each subdirectory is a course name, e.g. /app/data/courses/ma1101/week1.pdf
-COURSES_DIR = Path("/app/data/courses")
+COURSES_DIR = DATA_DIR / "courses"
 
 # Uploaded files marked as copyrighted in the ingest UI, by source path as
 # stored in Qdrant (e.g. "IMAx3011/book.md"). Answers may still use them, but
@@ -176,7 +177,16 @@ def _chunk_id(source: str, index: int) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{source}::{index}"))
 
 
-def main(force_full: bool = False):
+def main(force_full: bool = False, trigger: str = "cli", lock=None):
+    """
+    One ingest run, recorded in ingest/runs.py (lock, status page, history)
+    whichever way it was started. Raises RunBusy if another run is in progress.
+    """
+    with tracked_run(trigger, force_full=force_full, lock=lock):
+        _ingest(force_full)
+
+
+def _ingest(force_full: bool) -> None:
     Config.validate()
 
     files = collect_files()
@@ -326,4 +336,8 @@ def main(force_full: bool = False):
 
 
 if __name__ == "__main__":
-    main()
+    # From the command line (the notes-repo trigger): wait for a run that is in
+    # progress instead of skipping, so the notes changes still get ingested
+    if is_running():
+        print("[ingest] another ingest run is in progress; waiting for it to finish", flush=True)
+    main(trigger="cli", lock=acquire_lock(wait=True))

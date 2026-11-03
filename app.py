@@ -1517,38 +1517,48 @@ _STATUS_PAGE = """<!doctype html>
   .error-msg { color: #c0392b; font-weight: 500; }
   .footer { text-align: center; margin-top: 1.2rem; font-size: 0.8rem; color: #888; }
 
-  /* --- History bars --- */
-  .bar-chart { display: flex; align-items: flex-end; gap: 2px; height: 60px; margin-top: 0.8rem; }
-  .bar {
-    flex: 1;
-    min-width: 2px;
-    border-radius: 2px 2px 0 0;
-    cursor: pointer;
-    transition: opacity 0.15s;
-  }
+  .status-interrupted { background: #fff0e0; color: #b35c00; }
+  .status-interrupted .dot { background: #b35c00; }
+
+  /* --- History --- */
+  .bar-chart { display: flex; align-items: flex-end; gap: 2px; height: 48px; margin-top: 0.8rem; }
+  .bar { flex: 1; min-width: 2px; height: 100%; border-radius: 2px; transition: opacity 0.15s; }
   .bar:hover { opacity: 0.7; }
-  .bar-idle { background: #2a7a2a; }
+  .bar-idle { background: #dfe8df; }
   .bar-running { background: #b8860b; }
   .bar-done { background: #1565c0; }
   .bar-error { background: #c0392b; }
-  .bar-down { background: #d0d0d0; }
-  .bar-legend { display: flex; gap: 1rem; font-size: 0.75rem; color: #555; margin-top: 0.5rem; flex-wrap: wrap; }
+  .bar-interrupted { background: #e67e22; }
+  .bar-nodata { background: repeating-linear-gradient(45deg, #eee, #eee 3px, #f8f8f8 3px, #f8f8f8 6px); }
+  .bar-axis { display: flex; justify-content: space-between; font-size: 0.72rem; color: #888; margin-top: 0.3rem; }
+  .bar-legend { display: flex; gap: 1rem; font-size: 0.75rem; color: #555; margin-top: 0.6rem; flex-wrap: wrap; }
   .bar-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
   .bar-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
-  .range-btns { display: flex; gap: 0.4rem; margin-bottom: 0.8rem; }
+  .range-btns { display: flex; gap: 0.4rem; margin-bottom: 0.4rem; }
   .range-btns button { font-size: 0.8rem; padding: 0.25rem 0.6rem; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer; }
   .range-btns button.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
-  #history-info { font-size: 0.8rem; color: #666; margin-top: 0.3rem; min-height: 1.2rem; }
+  #history-info { font-size: 0.85rem; color: #444; margin-top: 0.9rem; }
+  table.runs { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.6rem; }
+  table.runs th { text-align: left; font-weight: 600; color: #555; padding: 0.4rem 0.5rem; border-bottom: 1px solid #e5e5e5; }
+  table.runs td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  table.runs tr:last-child td { border-bottom: none; }
+  table.runs .err { color: #c0392b; font-size: 0.78rem; margin-top: 0.15rem; word-break: break-word; }
+  .small-badge { font-size: 0.72rem; padding: 0.15rem 0.5rem; }
+  .muted { color: #888; }
 </style>
 </head>
 <body>
   <div class="card">
     <h1>Ingest Service Status</h1>
-    <div class="subtitle">Live view into the document ingestion pipeline</div>
+    <div class="subtitle">Live view of the document ingestion pipeline</div>
 
     <div class="row">
-      <span class="label">State</span>
-      <span id="state-badge" class="badge status-down"><span class="dot"></span>Unknown</span>
+      <span class="label">Right now</span>
+      <span id="now-badge" class="badge status-down"><span class="dot"></span>unknown</span>
+    </div>
+    <div class="row" id="result-row">
+      <span class="label">Last run</span>
+      <span id="result-badge" class="badge status-down"><span class="dot"></span>&mdash;</span>
     </div>
     <div class="row">
       <span class="label">Started</span>
@@ -1557,6 +1567,10 @@ _STATUS_PAGE = """<!doctype html>
     <div class="row">
       <span class="label">Finished</span>
       <span id="finished" class="timestamp">&mdash;</span>
+    </div>
+    <div class="row">
+      <span class="label">Started by</span>
+      <span id="trigger" class="timestamp">&mdash;</span>
     </div>
     <div class="row">
       <span class="label">Last checked</span>
@@ -1580,7 +1594,7 @@ _STATUS_PAGE = """<!doctype html>
 
   <div class="card">
     <h1>Ingest History</h1>
-    <div class="subtitle">Per-bucket availability over the selected window</div>
+    <div class="subtitle">When ingest runs happened, and how they ended</div>
 
     <div class="range-btns">
       <button id="btn-24h" class="active" onclick="setRange(24)">Last 24h</button>
@@ -1589,169 +1603,242 @@ _STATUS_PAGE = """<!doctype html>
     </div>
 
     <div id="bar-chart" class="bar-chart"></div>
-    <div id="history-info"></div>
+    <div class="bar-axis"><span id="axis-start"></span><span>now</span></div>
 
     <div class="bar-legend">
       <span><i class="bar-idle"></i> Idle</span>
       <span><i class="bar-running"></i> Running</span>
-      <span><i class="bar-done"></i> Done</span>
-      <span><i class="bar-error"></i> Error</span>
-      <span><i class="bar-down"></i> Down / No data</span>
+      <span><i class="bar-done"></i> Finished</span>
+      <span><i class="bar-error"></i> Failed</span>
+      <span><i class="bar-interrupted"></i> Interrupted</span>
+      <span><i class="bar-nodata"></i> Before history began</span>
     </div>
+
+    <div id="history-info"></div>
+    <table class="runs" id="runs-table" style="display:none;">
+      <thead><tr><th>Started</th><th>Duration</th><th>Result</th><th>Started by</th></tr></thead>
+      <tbody></tbody>
+    </table>
   </div>
 
 <script>
-const badge = document.getElementById('state-badge');
-const startedEl = document.getElementById('started');
-const finishedEl = document.getElementById('finished');
-const lastCheckEl = document.getElementById('last-check');
-const errorRow = document.getElementById('error-row');
-const errorText = document.getElementById('error-text');
-const logContainer = document.getElementById('log-container');
-const logEl = document.getElementById('log');
+const DASH = '—';
+const RESULT_LABEL = { done: 'finished', error: 'failed', interrupted: 'interrupted', running: 'running' };
+const RESULT_CLASS = { done: 'done', error: 'error', interrupted: 'interrupted', running: 'running' };
+let triggerLabels = { page: 'Ingest page', cli: 'Command line / notes update' };
+let lastStatus = null;
 
 function fmt(ts) {
-  if (!ts) return '&mdash;';
-  try { return new Date(ts).toLocaleString(); } catch { return ts; }
+  if (!ts) return DASH;
+  const d = new Date(ts);
+  return isNaN(d) ? ts : d.toLocaleString();
+}
+
+function fmtDuration(sec) {
+  if (sec == null) return DASH;
+  sec = Math.round(sec);
+  if (sec < 60) return sec + ' s';
+  const m = Math.floor(sec / 60), s = sec % 60;
+  if (m < 60) return m + ' min' + (s ? ' ' + s + ' s' : '');
+  const h = Math.floor(m / 60);
+  return h + ' h' + (m % 60 ? ' ' + (m % 60) + ' min' : '');
+}
+
+function triggerText(trigger, forceFull) {
+  if (!trigger) return DASH;
+  return (triggerLabels[trigger] || trigger) + (forceFull ? ' (full rebuild)' : '');
+}
+
+function setBadge(el, cls, text) {
+  el.className = 'badge status-' + cls;
+  el.textContent = '';
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  el.append(dot, text);
 }
 
 async function poll() {
-  let state = { status: 'down', started_at: null, finished_at: null, error: null, log: '' };
+  let state = null, failure = null;
   try {
     const res = await fetch('/ingest/status', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     state = await res.json();
   } catch (e) {
-    state.status = 'down';
-    state.error = e.message;
+    failure = e.message;
   }
+  document.getElementById('last-check').textContent = new Date().toLocaleTimeString();
 
-  const status = state.status || 'down';
-  badge.className = 'badge status-' + status;
-  badge.innerHTML = '<span class="dot"></span>' + status;
+  const nowBadge = document.getElementById('now-badge');
+  const resultBadge = document.getElementById('result-badge');
+  const errorRow = document.getElementById('error-row');
+  const errorText = document.getElementById('error-text');
+  const logContainer = document.getElementById('log-container');
+  const logEl = document.getElementById('log');
 
-  startedEl.textContent = fmt(state.started_at);
-  finishedEl.textContent = fmt(state.finished_at);
-  lastCheckEl.textContent = new Date().toLocaleTimeString();
-
-  if (state.error) {
+  if (!state) {
+    setBadge(nowBadge, 'down', 'unreachable');
     errorRow.style.display = 'flex';
-    errorText.textContent = state.error;
-  } else {
-    errorRow.style.display = 'none';
+    errorText.textContent = 'Could not reach the ingest service (' + failure + '). It may be restarting.';
+    return;
   }
+
+  const running = state.status === 'running';
+  setBadge(nowBadge, running ? 'running' : 'idle', running ? 'running' : 'idle');
+  document.getElementById('result-row').style.display = running ? 'none' : '';  // "Right now" already says running
+  if (state.status === 'idle') setBadge(resultBadge, 'down', 'none recorded yet');
+  else setBadge(resultBadge, RESULT_CLASS[state.status] || 'down', RESULT_LABEL[state.status] || state.status);
+
+  document.getElementById('started').textContent = fmt(state.started_at);
+  let finished = fmt(state.finished_at);
+  if (running && state.started_at) {
+    finished = 'still running, ' + fmtDuration((Date.now() - new Date(state.started_at)) / 1000) + ' so far';
+  } else if (state.started_at && state.finished_at) {
+    finished += ' (' + fmtDuration((new Date(state.finished_at) - new Date(state.started_at)) / 1000) + ')';
+  }
+  document.getElementById('finished').textContent = finished;
+  document.getElementById('trigger').textContent = triggerText(state.trigger, state.force_full);
+
+  errorRow.style.display = state.error ? 'flex' : 'none';
+  errorText.textContent = state.error || '';
 
   if (state.log) {
+    const atBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 20;
     logContainer.style.display = 'block';
     logEl.textContent = state.log;
-    logEl.scrollTop = logEl.scrollHeight;
+    if (atBottom) logEl.scrollTop = logEl.scrollHeight;
   } else {
     logContainer.style.display = 'none';
   }
+
+  // A run just started or ended: update the history right away
+  if (lastStatus !== null && lastStatus !== state.status) renderHistory();
+  lastStatus = state.status;
 }
 
 poll();
 setInterval(poll, 5000);
 
-/* --- History bars --- */
+/* --- History --- */
 let currentRangeHours = 24;
 
 function bucketCount(hours) {
   if (hours <= 24) return 48;      // 30 min buckets
   if (hours <= 7 * 24) return 84;  // 2 h buckets
-  return 60;                       // 12 h buckets for 30d
+  return 60;                       // 12 h buckets
 }
 
 function setRange(hours) {
   currentRangeHours = hours;
   for (const btn of document.querySelectorAll('.range-btns button')) btn.classList.remove('active');
-  if (hours <= 24) document.getElementById('btn-24h').classList.add('active');
-  else if (hours <= 7 * 24) document.getElementById('btn-7d').classList.add('active');
-  else document.getElementById('btn-30d').classList.add('active');
+  document.getElementById(hours <= 24 ? 'btn-24h' : hours <= 7 * 24 ? 'btn-7d' : 'btn-30d').classList.add('active');
   renderHistory();
 }
 
-function parseTs(ts) {
-  try { return new Date(ts).getTime(); } catch { return 0; }
-}
-
-function statePriority(s) {
-  return { error: 4, running: 3, done: 2, idle: 1, down: 0 }[s] || 0;
-}
+// Worst first: a bucket shows the most important thing that happened in it
+const PRIORITY = { error: 5, interrupted: 4, running: 3, done: 2, idle: 1, nodata: 0 };
 
 async function renderHistory() {
   const chart = document.getElementById('bar-chart');
   const info = document.getElementById('history-info');
-  chart.innerHTML = '';
-  info.textContent = 'Loading...';
-
-  const now = Date.now();
-  const rangeMs = currentRangeHours * 3600_000;
-  const startMs = now - rangeMs;
-  const nBuckets = bucketCount(currentRangeHours);
-  const bucketMs = rangeMs / nBuckets;
-
-  let events = [];
+  let data;
   try {
-    const res = await fetch('/ingest/history');
-    if (res.ok) events = (await res.json()).events || [];
+    const res = await fetch('/ingest/history', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    data = await res.json();
   } catch (e) {
-    info.textContent = 'Failed to load history';
+    info.textContent = 'Could not load the history (' + e.message + ').';
     return;
   }
+  triggerLabels = data.trigger_labels || triggerLabels;
 
-  // Oldest first so carry-forward works
-  events = events.slice().reverse();
+  const now = Date.now();
+  const rangeMs = currentRangeHours * 3600000;
+  const startMs = now - rangeMs;
+  const n = bucketCount(currentRangeHours);
+  const bucketMs = rangeMs / n;
+  const firstMs = data.first_event ? new Date(data.first_event).getTime() : now;
 
-  const buckets = Array(nBuckets).fill(null).map((_, i) => ({
-    t0: startMs + i * bucketMs,
-    t1: startMs + (i + 1) * bucketMs,
-    states: [],
-  }));
+  // A run covers start..end. Still running: until now. Interrupted with no known end: just its start
+  const runs = (data.runs || []).map(r => {
+    const start = new Date(r.started_at).getTime();
+    const end = r.finished_at ? new Date(r.finished_at).getTime() : (r.result === 'running' ? now : start);
+    return { ...r, start, end };
+  });
 
-  let carriedState = 'down';
-  let evIdx = 0;
-
-  for (let i = 0; i < nBuckets; i++) {
-    const b = buckets[i];
-    // If there were no events at all before this bucket, it's down until first event
-    if (evIdx === 0 && events.length > 0 && parseTs(events[0].t) > b.t1) {
-      carriedState = 'down';
+  chart.textContent = '';
+  for (let i = 0; i < n; i++) {
+    const t0 = startMs + i * bucketMs, t1 = t0 + bucketMs;
+    let state = t1 <= firstMs ? 'nodata' : 'idle';
+    const here = [];
+    for (const r of runs) {
+      if (r.start >= t1 || r.end < t0) continue;
+      here.push(r);
+      // The bucket where a run ended shows its result; the ones before, that it was running
+      const s = (r.result !== 'running' && r.end < t1) ? r.result : 'running';
+      if (PRIORITY[s] > PRIORITY[state]) state = s;
     }
-
-    while (evIdx < events.length && parseTs(events[evIdx].t) <= b.t1) {
-      const ev = events[evIdx];
-      if (ev.type === 'run_start') carriedState = 'running';
-      else if (ev.type === 'run_done') carriedState = 'done';
-      else if (ev.type === 'run_error') carriedState = 'error';
-      b.states.push(carriedState);
-      evIdx++;
-    }
-
-    // If no events fell exactly in this bucket, use carried state
-    if (!b.states.length) {
-      b.finalState = carriedState;
-    } else {
-      // Pick highest priority state in bucket
-      b.finalState = b.states.reduce((a, s) => statePriority(s) > statePriority(a) ? s : a, b.states[0]);
-    }
-  }
-
-  // Render bars
-  for (const b of buckets) {
     const bar = document.createElement('div');
-    bar.className = 'bar bar-' + (b.finalState || 'down');
-    const d0 = new Date(b.t0);
-    const d1 = new Date(b.t1);
-    bar.title = d0.toLocaleString() + ' — ' + d1.toLocaleString() + ': ' + (b.finalState || 'down');
+    bar.className = 'bar bar-' + state;
+    let tip = new Date(t0).toLocaleString() + ' ' + DASH + ' ' + new Date(t1).toLocaleTimeString();
+    tip += here.length
+      ? '\\n' + here.map(r => fmt(r.started_at) + ': ' + (RESULT_LABEL[r.result] || r.result)).join('\\n')
+      : '\\n' + (state === 'nodata' ? 'no history yet' : 'idle');
+    bar.title = tip;
     chart.appendChild(bar);
   }
+  document.getElementById('axis-start').textContent = new Date(startMs).toLocaleString();
 
-  const total = buckets.length;
-  const counts = {};
-  for (const b of buckets) counts[b.finalState] = (counts[b.finalState] || 0) + 1;
-  const pct = s => ((counts[s] || 0) / total * 100).toFixed(1);
-  info.textContent = 'Idle ' + pct('idle') + '% | Running ' + pct('running') + '% | Done ' + pct('done') + '% | Error ' + pct('error') + '% | Down ' + pct('down') + '%';
+  // Runs in the window, newest first
+  const inWindow = runs.filter(r => r.end >= startMs);
+  const count = k => inWindow.filter(r => r.result === k).length;
+  if (!inWindow.length) {
+    info.textContent = 'No ingest runs in this period.'
+      + (runs.length ? ' The last one started ' + fmt(runs[0].started_at) + '.' : '');
+  } else {
+    const parts = [count('done') + ' finished'];
+    if (count('error')) parts.push(count('error') + ' failed');
+    if (count('interrupted')) parts.push(count('interrupted') + ' interrupted');
+    if (count('running')) parts.push(count('running') + ' running');
+    info.textContent = inWindow.length + ' run' + (inWindow.length === 1 ? '' : 's') + ' in this period: ' + parts.join(', ') + '.';
+  }
+
+  const table = document.getElementById('runs-table');
+  const tbody = table.querySelector('tbody');
+  tbody.textContent = '';
+  table.style.display = inWindow.length ? '' : 'none';
+  for (const r of inWindow.slice(0, 20)) {
+    const tr = document.createElement('tr');
+    const tdStart = document.createElement('td');
+    tdStart.textContent = fmt(r.started_at);
+    const tdDur = document.createElement('td');
+    tdDur.textContent = r.result === 'running'
+      ? fmtDuration((now - r.start) / 1000) + ' so far'
+      : (r.duration_s != null ? fmtDuration(r.duration_s) : DASH);
+    const tdResult = document.createElement('td');
+    const badge = document.createElement('span');
+    setBadge(badge, RESULT_CLASS[r.result] || 'down', RESULT_LABEL[r.result] || r.result);
+    badge.classList.add('small-badge');
+    tdResult.appendChild(badge);
+    if (r.error) {
+      const err = document.createElement('div');
+      err.className = 'err';
+      err.textContent = r.error;
+      tdResult.appendChild(err);
+    }
+    const tdBy = document.createElement('td');
+    tdBy.textContent = triggerText(r.trigger, r.force_full);
+    tr.append(tdStart, tdDur, tdResult, tdBy);
+    tbody.appendChild(tr);
+  }
+  if (inWindow.length > 20) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 4;
+    td.className = 'muted';
+    td.textContent = '... and ' + (inWindow.length - 20) + ' older runs in this period';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
 }
 
 renderHistory();

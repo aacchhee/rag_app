@@ -2,9 +2,14 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     restart: unless-stopped
+    # Localhost only: Docker-published ports bypass the host firewall, and Qdrant
+    # has no auth unless an API key is set, so 0.0.0.0 would expose the whole index.
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+    # To require a key, uncomment and set QDRANT_API_KEY in .env (the apps send it):
+    # environment:
+    #   QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
     volumes:
       - ./data/qdrant:/qdrant/storage
 

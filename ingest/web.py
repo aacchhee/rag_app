@@ -6,66 +6,29 @@ instead of a shell, with live status/log output. Runs as a small Flask app;
 the actual ingest logic in ingest/ingest.py is untouched.
 """
 
-import contextlib
-import io
-import json
 import os
 import signal
-import sys
 import threading
-import traceback
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Flask, Response, jsonify, request
 from werkzeug.utils import secure_filename
 
+from ingest import runs
 from ingest.ingest import (
     _load_manifest, _rel_source, COURSES_DIR, list_courses, load_copyrighted, main as run_ingest,
     save_copyrighted, set_copyrighted_in_qdrant,
 )
 
-# --- Event history (JSONL) ---
-HISTORY_FILE = COURSES_DIR.parent / "ingest_history.jsonl"
-_MAX_HISTORY_RETENTION_DAYS = 90
-
-
-def _log_event(event_type: str, **extra) -> None:
-    entry = {
-        "t": datetime.now(timezone.utc).isoformat(),
-        "type": event_type,
-        **extra,
-    }
-    try:
-        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(HISTORY_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
-
-
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB per upload
 
-_LOCK = threading.Lock()
-_state = {
-    "status": "idle",  # idle | running | done | error
-    "started_at": None,
-    "finished_at": None,
-    "error": None,
-    "log": "",
-}
-
-# Auto-exit after 30 minutes of inactivity once a job completes.
+# Exit after 30 minutes without requests, unless a run is in progress: frees the
+# memory marker's models take. Run state and history live in files (ingest/runs.py),
+# so they survive the restart.
 _last_request_time = datetime.now(timezone.utc)
 _AUTO_EXIT_DELAY_SEC = int(os.getenv("INGEST_AUTO_EXIT_DELAY_MIN", "30")) * 60
-
-
-class _LogStream(io.StringIO):
-    def write(self, s):
-        with _LOCK:
-            _state["log"] += s
-        return super().write(s)
 
 
 def _bump_activity():
@@ -77,10 +40,8 @@ def _schedule_auto_exit():
     def _watchdog():
         while True:
             threading.Event().wait(timeout=_AUTO_EXIT_DELAY_SEC)
-            with _LOCK:
-                status = _state["status"]
-                idle_for = (datetime.now(timezone.utc) - _last_request_time).total_seconds()
-            if status != "running" and idle_for >= _AUTO_EXIT_DELAY_SEC:
+            idle_for = (datetime.now(timezone.utc) - _last_request_time).total_seconds()
+            if idle_for >= _AUTO_EXIT_DELAY_SEC and not runs.is_running():
                 os.kill(os.getpid(), signal.SIGTERM)
     threading.Thread(target=_watchdog, daemon=True).start()
 
@@ -88,31 +49,11 @@ def _schedule_auto_exit():
 _schedule_auto_exit()
 
 
-def _run_job(force_full: bool = False):
-    _log_event("run_start", force_full=force_full)
-    with _LOCK:
-        _state.update(
-            status="running",
-            started_at=datetime.now(timezone.utc).isoformat(),
-            finished_at=None,
-            error=None,
-            log="",
-        )
-
+def _run_job(lock, force_full: bool):
     try:
-        with contextlib.redirect_stdout(_LogStream()):
-            run_ingest(force_full=force_full)
-        with _LOCK:
-            _state["status"] = "done"
-        _log_event("run_done")
+        run_ingest(force_full=force_full, trigger="page", lock=lock)
     except Exception:
-        with _LOCK:
-            _state["status"] = "error"
-            _state["error"] = traceback.format_exc()
-        _log_event("run_error")
-    finally:
-        with _LOCK:
-            _state["finished_at"] = datetime.now(timezone.utc).isoformat()
+        pass  # recorded by runs.tracked_run: status page and history show it
 
 
 @app.get("/")
@@ -123,31 +64,14 @@ def index():
 
 @app.get("/history")
 def get_history():
-    _bump_activity()
-    since = request.args.get("since")
-    until = request.args.get("until")
-    cutoff = datetime.now(timezone.utc) - timedelta(days=_MAX_HISTORY_RETENTION_DAYS)
-
-    events = []
-    if HISTORY_FILE.exists():
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    ev = json.loads(line)
-                    t = datetime.fromisoformat(ev.get("t", "1970-01-01T00:00:00+00:00"))
-                    if t < cutoff:
-                        continue
-                    if since and t < datetime.fromisoformat(since):
-                        continue
-                    if until and t > datetime.fromisoformat(until):
-                        continue
-                    events.append(ev)
-                except (ValueError, TypeError):
-                    continue
-    return jsonify(events=list(reversed(events[-10000:])))
+    # Not counted as activity: the public status page polls this
+    events = runs.read_events()
+    return jsonify(
+        runs=runs.list_runs(),  # newest first: started/finished, result, trigger, duration
+        first_event=events[0]["t"] if events else None,  # before this, the chart has no data
+        trigger_labels=runs.TRIGGER_LABELS,
+        events=list(reversed(events[-10000:])),
+    )
 
 
 @app.get("/sources")
@@ -186,17 +110,20 @@ def list_sources():
 
 @app.get("/status")
 def status():
-    with _LOCK:
-        return jsonify(dict(_state))
+    # The current run, or the last one (also one started from the command line)
+    return jsonify(runs.read_state())
 
 
 @app.post("/run")
 def trigger():
-    with _LOCK:
-        if _state["status"] == "running":
-            return jsonify({"error": "ingest already running"}), 409
+    _bump_activity()
     force_full = bool((request.get_json(silent=True) or {}).get("force_full"))
-    threading.Thread(target=_run_job, args=(force_full,), daemon=True).start()
+    # Take the lock here, before answering: of two quick clicks only one starts a run
+    try:
+        lock = runs.acquire_lock()
+    except runs.RunBusy:
+        return jsonify({"error": "an ingest run is already in progress"}), 409
+    threading.Thread(target=_run_job, args=(lock, force_full), daemon=True).start()
     return jsonify({"started": True, "force_full": force_full})
 
 
@@ -365,7 +292,7 @@ def set_file_copyright():
         set_copyrighted_in_qdrant(source, flag)
     except Exception as e:
         return jsonify({"error": f"saved, but updating the index failed: {e}", "source": source}), 500
-    _log_event("copyright", source=source, copyrighted=flag)
+    runs.log_event("copyright", source=source, copyrighted=flag)
     return jsonify({"source": source, "copyrighted": flag})
 
 
@@ -384,6 +311,7 @@ _PAGE = """<!doctype html>
   .running { color: #b8860b; }
   .done { color: #2a7a2a; }
   .error { color: #c0392b; }
+  .interrupted { color: #b35c00; }
   pre { background: #111; color: #ddd; padding: 1rem; height: 16rem; overflow-y: auto;
         white-space: pre-wrap; word-break: break-word; border-radius: 6px; }
   /* Long lists scroll inside a panel instead of stretching the page */
