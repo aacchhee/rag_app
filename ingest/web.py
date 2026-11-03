@@ -384,14 +384,38 @@ _PAGE = """<!doctype html>
   .running { color: #b8860b; }
   .done { color: #2a7a2a; }
   .error { color: #c0392b; }
-  pre { background: #111; color: #ddd; padding: 1rem; height: 420px; overflow-y: auto;
+  pre { background: #111; color: #ddd; padding: 1rem; height: 16rem; overflow-y: auto;
         white-space: pre-wrap; word-break: break-word; border-radius: 6px; }
-  ul#file-list { list-style: none; padding: 0; }
-  ul#file-list li { display: flex; align-items: center; justify-content: space-between;
-                    padding: 0.4rem 0.6rem; border-bottom: 1px solid #ddd; }
-  ul#file-list li button { font-size: 0.85rem; padding: 0.2rem 0.6rem; }
+  /* Long lists scroll inside a panel instead of stretching the page */
+  .panel { border: 1px solid #ddd; border-radius: 8px; overflow: hidden; margin-top: 0.75rem; }
+  .panel-bar { display: flex; gap: 0.75rem; align-items: center; justify-content: space-between;
+               padding: 0.45rem 0.6rem; background: #f7f7f8; border-bottom: 1px solid #ddd;
+               font-size: 0.85rem; color: #555; }
+  .panel-bar input[type=search] { font-size: 0.9rem; padding: 0.3rem 0.5rem; border: 1px solid #ccc;
+                                  border-radius: 5px; width: 15rem; max-width: 55%; }
+  .scroll { max-height: 22rem; overflow-y: auto; }
+  .empty { padding: 0.8rem 0.6rem; color: #888; font-size: 0.9rem; }
+  .dir { color: #999; }
+  ul#file-list { list-style: none; padding: 0; margin: 0; }
+  ul#file-list li { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem;
+                    padding: 0.35rem 0.6rem; border-bottom: 1px solid #f0f0f0; font-size: 0.9rem; }
+  ul#file-list li:last-child { border-bottom: none; }
+  ul#file-list li:hover { background: #fafafa; }
+  ul#file-list li .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  ul#file-list li button { font-size: 0.8rem; padding: 0.15rem 0.55rem; }
   ul#file-list li .file-actions { display: flex; align-items: center; gap: 0.8rem; flex-shrink: 0; }
   ul#file-list li label { font-size: 0.85rem; white-space: nowrap; }
+  table.data { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  table.data th { position: sticky; top: 0; background: #f7f7f8; text-align: left; padding: 0.45rem 0.6rem;
+                  border-bottom: 1px solid #ddd; font-weight: 600; white-space: nowrap;
+                  cursor: pointer; user-select: none; }
+  table.data th:hover { color: #000; background: #efeff1; }
+  table.data td { padding: 0.35rem 0.6rem; border-bottom: 1px solid #f0f0f0; }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tbody tr:hover td { background: #fafafa; }
+  table.data .num { text-align: right; font-variant-numeric: tabular-nums; width: 5rem; }
+  table.data .course { width: 7rem; white-space: nowrap; }
+  table.data td.src { word-break: break-word; }
   .copyright-label { display: inline-block; margin-top: 0.5rem; font-size: 0.9rem; }
   .hint { color: #666; }
   #upload-msg { margin-top: 0.5rem; font-size: 0.9rem; }
@@ -423,7 +447,13 @@ _PAGE = """<!doctype html>
   <label class="copyright-label"><input type="checkbox" id="upload-copyrighted"> Copyrighted material
     <span class="hint">(answers may use it, but students can't open its text)</span></label>
   <div id="upload-msg"></div>
-  <ul id="file-list"></ul>
+  <div class="panel">
+    <div class="panel-bar">
+      <span id="files-count"></span>
+      <input type="search" id="files-filter" placeholder="Filter files" oninput="renderFiles()">
+    </div>
+    <div class="scroll"><ul id="file-list"></ul></div>
+  </div>
 
   <h2>Run</h2>
   <p>Incremental by default: only new/changed files are re-chunked and re-embedded, unchanged
@@ -435,17 +465,26 @@ _PAGE = """<!doctype html>
 
   <h2>Indexed Sources</h2>
   <p>Everything currently stored in Qdrant, with chunk counts.</p>
-  <div id="sources-summary" style="font-size: 0.9rem; color: #555; margin-bottom: 0.5rem;"></div>
-  <table id="sources-table" style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
-    <thead>
-      <tr style="border-bottom: 2px solid #ccc; text-align: left;">
-        <th style="padding: 0.4rem;">Source</th>
-        <th style="padding: 0.4rem; width: 80px;">Chunks</th>
-        <th style="padding: 0.4rem; width: 100px;">Course</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <div id="sources-summary" class="hint" style="font-size: 0.85rem;"></div>
+  <div class="panel">
+    <div class="panel-bar">
+      <span id="sources-count"></span>
+      <input type="search" id="sources-filter" placeholder="Filter sources" oninput="renderSources()">
+    </div>
+    <div class="scroll">
+      <table id="sources-table" class="data">
+        <thead>
+          <tr>
+            <th data-key="source" onclick="sortSources('source')">Source</th>
+            <th data-key="chunks" class="num" onclick="sortSources('chunks')">Chunks</th>
+            <th data-key="course" class="course" onclick="sortSources('course')">Course</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="sources-empty" class="empty" hidden></div>
+    </div>
+  </div>
 
 <script>
 const btn = document.getElementById('run-btn');
@@ -514,12 +553,46 @@ async function loadFiles() {
   const course = courseSelect.value;
   const qs = course ? '?course=' + encodeURIComponent(course) : '';
   const res = await fetch('/files' + qs);
-  const files = await res.json();
+  filesData = await res.json();
+  renderFiles();
+}
+
+let filesData = [];
+
+// "IMAx3011/book.md" -> muted "IMAx3011/" + "book.md"
+function pathLabel(el, path) {
+  const cut = path.lastIndexOf('/') + 1;
+  el.textContent = '';
+  if (cut) {
+    const dir = document.createElement('span');
+    dir.className = 'dir';
+    dir.textContent = path.slice(0, cut);
+    el.appendChild(dir);
+  }
+  el.appendChild(document.createTextNode(path.slice(cut)));
+  el.title = path;
+}
+
+function renderFiles() {
+  const q = document.getElementById('files-filter').value.trim().toLowerCase();
+  const files = filesData.filter(f => !q || f.name.toLowerCase().includes(q));
+  const course = courseSelect.value;
+  document.getElementById('files-count').textContent =
+    (q ? files.length + ' of ' : '') + filesData.length + ' file' + (filesData.length === 1 ? '' : 's')
+    + (course ? ' in ' + course : '');
   fileListEl.innerHTML = '';
+  if (!files.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = q ? 'No files match.' : 'No uploaded files' + (course ? ' in this course.' : '.');
+    fileListEl.appendChild(li);
+    return;
+  }
   for (const file of files) {
     const li = document.createElement('li');
     const label = document.createElement('span');
-    label.textContent = file.name;
+    label.className = 'name';
+    pathLabel(label, file.name);
     const actions = document.createElement('span');
     actions.className = 'file-actions';
     const crLabel = document.createElement('label');
@@ -613,38 +686,75 @@ init();
 async function loadSources() {
   const course = courseSelect.value;
   const qs = course ? '?course=' + encodeURIComponent(course) : '';
-  const tbody = document.querySelector('#sources-table tbody');
   const summary = document.getElementById('sources-summary');
   try {
     const res = await fetch('/sources' + qs);
     const data = await res.json();
     if (!data.indexed) {
-      summary.textContent = 'Nothing indexed yet. Run an ingest first.';
-      tbody.innerHTML = '';
+      summary.textContent = '';
+      sourcesData = [];
+      sourcesTotalChunks = 0;
+      renderSources('Nothing indexed yet. Run an ingest first.');
       return;
     }
-    const filterHint = course ? ` (course: ${course})` : '';
-    summary.textContent = `Collection: ${data.collection || '-'} | dim=${data.embedding_dim || '-'} | ${data.total_sources} sources | ${data.total_chunks} chunks${filterHint}`;
-    tbody.innerHTML = '';
-    for (const item of data.sources) {
-      const tr = document.createElement('tr');
-      tr.style.borderBottom = '1px solid #eee';
-      const tdSrc = document.createElement('td');
-      tdSrc.style.padding = '0.4rem';
-      tdSrc.textContent = item.source;
-      const tdChunks = document.createElement('td');
-      tdChunks.style.padding = '0.4rem';
-      tdChunks.textContent = item.chunks;
-      const tdCourse = document.createElement('td');
-      tdCourse.style.padding = '0.4rem';
-      tdCourse.textContent = item.course || '-';
-      tr.appendChild(tdSrc);
-      tr.appendChild(tdChunks);
-      tr.appendChild(tdCourse);
-      tbody.appendChild(tr);
-    }
+    summary.textContent = `Collection ${data.collection || '-'} · dim ${data.embedding_dim || '-'}`;
+    sourcesData = data.sources;
+    sourcesTotalChunks = data.total_chunks;
+    renderSources();
   } catch (e) {
     summary.textContent = 'Failed to load sources: ' + e.message;
+  }
+}
+
+let sourcesData = [];
+let sourcesTotalChunks = 0;
+let sourcesSort = { key: 'source', dir: 1 };
+
+function sortSources(key) {
+  // A new column sorts ascending, except chunks: biggest first is the useful view
+  sourcesSort = sourcesSort.key === key ? { key, dir: -sourcesSort.dir } : { key, dir: key === 'chunks' ? -1 : 1 };
+  renderSources();
+}
+
+function renderSources(emptyMsg) {
+  const q = document.getElementById('sources-filter').value.trim().toLowerCase();
+  const rows = sourcesData.filter(s => !q || (s.source + ' ' + (s.course || '')).toLowerCase().includes(q));
+  const { key, dir } = sourcesSort;
+  rows.sort((a, b) => {
+    const x = key === 'chunks' ? a.chunks : String(a[key] || '').toLowerCase();
+    const y = key === 'chunks' ? b.chunks : String(b[key] || '').toLowerCase();
+    return (x < y ? -1 : x > y ? 1 : 0) * dir;
+  });
+
+  const course = courseSelect.value;
+  const chunks = q ? rows.reduce((n, s) => n + s.chunks, 0) : sourcesTotalChunks;
+  document.getElementById('sources-count').textContent =
+    (q ? rows.length + ' of ' : '') + sourcesData.length + ' sources · ' + chunks + ' chunks'
+    + (course ? ' in ' + course : '');
+
+  for (const th of document.querySelectorAll('#sources-table th')) {
+    const base = th.textContent.replace(/ [▲▼]$/, '');
+    th.textContent = base + (th.dataset.key === key ? (dir === 1 ? ' ▲' : ' ▼') : '');
+  }
+
+  const tbody = document.querySelector('#sources-table tbody');
+  const empty = document.getElementById('sources-empty');
+  tbody.innerHTML = '';
+  empty.hidden = rows.length > 0;
+  empty.textContent = emptyMsg || (q ? 'No sources match.' : 'No sources in this course.');
+  for (const item of rows) {
+    const tr = document.createElement('tr');
+    const tdSrc = document.createElement('td');
+    tdSrc.className = 'src';
+    pathLabel(tdSrc, item.source);
+    const tdChunks = document.createElement('td');
+    tdChunks.className = 'num';
+    tdChunks.textContent = item.chunks;
+    const tdCourse = document.createElement('td');
+    tdCourse.className = 'course';
+    tdCourse.textContent = item.course || '-';
+    tr.append(tdSrc, tdChunks, tdCourse);
+    tbody.appendChild(tr);
   }
 }
 
