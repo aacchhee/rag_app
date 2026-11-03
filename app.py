@@ -13,7 +13,7 @@ from ingest.embed import embed_query
 from ingest.ingest import REPOS, SITE_URLS, list_courses
 from log_utils import current_request_id, preview_text
 from rag.retriever import Retriever
-from rag.source_links import SourceLinks
+from rag.source_links import SourceLinks, heading_label
 from rag.source_reader import build_page
 from rag.llm import chat_completion, chat_completion_stream, tool_call_args
 from rag.python_cell import PYTHON_CELL_TOOL, build_python_cell, student_code_context
@@ -270,7 +270,9 @@ def render_sources(hits):
 
     for i, h in enumerate(hits, start=1):
         tag = f"[S{i}]"
-        title = (h.heading or "").strip()
+        raw_heading = (h.heading or "").strip()
+        # Converted PDFs keep link and emphasis markup in headings; show plain text
+        title = heading_label(raw_heading)
         src = h.source or ""
 
         txt = (h.text or "").strip()
@@ -295,7 +297,7 @@ def render_sources(hits):
                 "chars": len(txt),
                 "truncated": (len((h.text or "")) > RAG.MAX_CHARS_PER_CHUNK),
                 # Where the student can read it in the published notes (None: no public page)
-                "url": source_links.url_for(h.course, src, h.chunk_index, title),
+                "url": source_links.url_for(h.course, src, h.chunk_index, raw_heading),
                 # Copyrighted text is used for the answer but never sent to the browser
                 "copyrighted": h.copyrighted,
                 "excerpt": "" if h.copyrighted else _excerpt(h.text or ""),

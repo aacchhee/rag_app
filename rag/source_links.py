@@ -21,7 +21,7 @@ import logging
 import re
 from pathlib import Path
 
-from ingest.chunker import _strip_yaml_front_matter, chunk_markdown
+from ingest.chunker import chunk_markdown, prepare_markdown
 
 logger = logging.getLogger("gunicorn.error")
 
@@ -49,6 +49,12 @@ def _stringify_inline(text: str) -> str:
         else:
             out.append(re.sub(r"(\*\*|__|\*|_(?=\S)|(?<=\S)_)", "", part))
     return "".join(out)
+
+
+def heading_label(heading_text: str) -> str:
+    """A heading as plain text for display: '**0.1 [EVALUATING](#page-5-0)**' -> '0.1 EVALUATING'."""
+    text, _ = _split_attrs(heading_text or "")
+    return " ".join(_stringify_inline(text).split())
 
 
 def pandoc_identifier(heading_text: str) -> str:
@@ -181,7 +187,7 @@ class SourceLinks:
         if depth > 10 or not path.exists():
             return
         source = path.relative_to(repo).as_posix()
-        text = _strip_yaml_front_matter(path.read_text(encoding="utf-8", errors="replace")).strip()
+        text = prepare_markdown(path.read_text(encoding="utf-8", errors="replace"))
         first_page = source not in anchors  # a file included on several pages links to the first
         if first_page:
             anchors[source] = []
@@ -241,7 +247,7 @@ class SourceLinks:
     def _map_chunks(self, repo: Path, course: str, source: str, entries: list[tuple[int, str | None]]) -> None:
         page_url = self._page_urls.get((course, source))
         path = repo / source
-        text = _strip_yaml_front_matter(path.read_text(encoding="utf-8", errors="replace")).strip()
+        text = prepare_markdown(path.read_text(encoding="utf-8", errors="replace"))
 
         # A heading without an id on the page links to the nearest heading above it that has one
         linked: list[tuple[int, str | None]] = []

@@ -10,6 +10,8 @@ The source reader shows it a page (about PAGE_CHARS) at a time.
 
 import re
 
+from rag.source_links import heading_label
+
 PAGE_CHARS = 6000
 CITED_MARKER = "<span id=\"source-cited\"></span>"
 
@@ -95,7 +97,7 @@ def _page_texts(pages: list[list], chunk_index: int | None) -> tuple[list[str], 
                 text = _drop_overlap((prev_chunk.text or "").strip(), body)  # continues the previous page
             else:
                 if heading and heading != "Preamble":
-                    body = "### " + heading + "\n\n" + body
+                    body = "### " + heading_label(heading) + "\n\n" + body
                 text = text + "\n\n" + body if text else body
             prev_chunk = chunk
         texts.append(text)

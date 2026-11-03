@@ -8,15 +8,44 @@ def _strip_yaml_front_matter(text: str) -> str:
     return re.sub(r"(?s)\A---\n.*?\n---\n", "", text, count=1)
 
 
+# Bump when the chunk text for unchanged files changes, so the ingest re-chunks them
+CHUNKER_VERSION = "2"
+
+# Images embedded inline as data URIs (e.g. pasted into an uploaded .md file): one
+# such image can be hundreds of KB of base64, which would fill chunks with noise
+_DATA_IMAGE_MD_RE = re.compile(r"!\[([^\]]*)\]\(\s*<?data:[^)]*\)")
+_DATA_IMAGE_HTML_RE = re.compile(r"<img\b[^>]*\bsrc\s*=\s*[\"']data:[^>]*>", re.IGNORECASE)
+_ALT_RE = re.compile(r"\balt\s*=\s*[\"']([^\"']*)[\"']", re.IGNORECASE)
+
+
+def _image_placeholder(alt: str) -> str:
+    alt = " ".join(alt.split())
+    return f"[Figure: {alt}]" if alt else ""
+
+
+def strip_embedded_images(text: str) -> str:
+    """Replace data-URI images with their alt text."""
+    text = _DATA_IMAGE_MD_RE.sub(lambda m: _image_placeholder(m.group(1)), text)
+    def html(m):
+        alt = _ALT_RE.search(m.group(0))
+        return _image_placeholder(alt.group(1) if alt else "")
+    return _DATA_IMAGE_HTML_RE.sub(html, text)
+
+
+def prepare_markdown(text: str) -> str:
+    """The text the chunker splits: no front matter, no embedded images."""
+    return strip_embedded_images(_strip_yaml_front_matter(text)).strip()
+
+
 def chunk_markdown(text: str, source_path: str, max_chars: int = 4000, overlap_chars: int = 300) -> List[Dict]:
     """
     Simple, robust chunker for .md/.qmd:
-    - strips YAML front matter
+    - strips YAML front matter and data-URI images
     - splits by headings (#, ##, ###...)
     - further splits long sections by character count with overlap
     Returns list of dicts: {title, text, source}
     """
-    text = _strip_yaml_front_matter(text).strip()
+    text = prepare_markdown(text)
     if not text:
         return []
 

@@ -13,7 +13,7 @@ from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, FieldCondition, Filter, MatchValue, PointIdsList, VectorParams
 
-from ingest.chunker import chunk_markdown
+from ingest.chunker import CHUNKER_VERSION, chunk_markdown
 from ingest.embed import get_embeddings_model
 from ingest.pdf import convert_pdf_to_markdown
 from config import Config
@@ -242,7 +242,8 @@ def main(force_full: bool = False):
         rel = _rel_source(f)
         seen_sources.add(rel)
         raw_bytes = f.read_bytes()
-        content_hash = hashlib.sha256(raw_bytes).hexdigest()
+        # The chunker version is part of the hash, so a chunker change re-chunks every file
+        content_hash = hashlib.sha256(raw_bytes + f"\0chunker-v{CHUNKER_VERSION}".encode()).hexdigest()
 
         prior = sources.get(rel)
         if prior and prior.get("hash") == content_hash:
