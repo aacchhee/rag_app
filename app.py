@@ -1,5 +1,6 @@
 import json
 import re
+import threading
 import time
 import uuid
 import logging
@@ -10,7 +11,8 @@ from werkzeug.exceptions import HTTPException
 from config import Config
 from cleanup import sanitize_llm_answer, sanitize_llm_text
 from ingest.embed import embed_query
-from ingest.ingest import REPOS, SITE_URLS, list_courses
+from ingest import repos as notes_repos
+from ingest.ingest import _manifest_path, list_courses
 from log_utils import current_request_id, preview_text
 from rag.retriever import Retriever
 from rag.source_links import SourceLinks, heading_label
@@ -140,9 +142,48 @@ _log_startup_config()
 # Load retriever once at startup (connects to Qdrant)
 retriever = Retriever()
 
-# Links from sources back to the published notes; rebuilt on every restart,
-# which rag_update_and_ingest does after the notes change
-source_links = SourceLinks.build(REPOS, SITE_URLS)
+class _LiveSourceLinks:
+    """
+    Links from sources back to the published notes, rebuilt when the notes
+    repositories (managed on the ingest page) or the index change: the clones
+    are read to map headings to page anchors, and they change with every pull.
+    """
+
+    _CHECK_EVERY_SEC = 30
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._links = SourceLinks()
+        self._signature = None
+        self._checked = 0.0
+
+    def _current_signature(self):
+        files = [notes_repos.REPOS_FILE, _manifest_path()]
+        return tuple(p.stat().st_mtime if p.exists() else None for p in files)
+
+    def get(self) -> SourceLinks:
+        now = time.monotonic()
+        if now - self._checked >= self._CHECK_EVERY_SEC:
+            with self._lock:
+                if now - self._checked >= self._CHECK_EVERY_SEC:
+                    self._checked = now
+                    try:
+                        signature = self._current_signature()
+                        if signature != self._signature:
+                            repos = notes_repos.list_repos()
+                            self._links = SourceLinks.build([(r.path, r.course) for r in repos],
+                                                            {r.course: r.site_url for r in repos if r.site_url})
+                            self._signature = signature
+                    except Exception:
+                        app.logger.exception("[source-links] rebuild failed; keeping the previous links")
+        return self._links
+
+    def url_for(self, *args, **kwargs):
+        return self.get().url_for(*args, **kwargs)
+
+
+source_links = _LiveSourceLinks()
+source_links.get()  # build at startup
 
 # Max conversation turns to include in chat mode
 MAX_CHAT_TURNS = 20

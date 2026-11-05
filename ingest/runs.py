@@ -38,7 +38,7 @@ HISTORY_RETENTION_DAYS = 90
 _MAX_LOG_CHARS = 100_000  # the state file keeps the end of the log
 _SAVE_EVERY_SEC = 2.0  # how often a running job's log is written to the state file
 
-TRIGGER_LABELS = {"page": "Ingest page", "cli": "Command line / notes update"}
+TRIGGER_LABELS = {"page": "Ingest page", "timer": "Notes update (10-min check)", "cli": "Command line"}
 
 
 class RunBusy(Exception):

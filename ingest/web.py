@@ -15,9 +15,9 @@ from pathlib import Path
 from flask import Flask, Response, jsonify, request
 from werkzeug.utils import secure_filename
 
-from ingest import runs
+from ingest import repos, runs, update
 from ingest.ingest import (
-    _load_manifest, _rel_source, COURSES_DIR, list_courses, load_copyrighted, main as run_ingest,
+    _load_manifest, _rel_source, COURSES_DIR, list_courses, load_copyrighted,
     save_copyrighted, set_copyrighted_in_qdrant,
 )
 
@@ -51,7 +51,8 @@ _schedule_auto_exit()
 
 def _run_job(lock, force_full: bool):
     try:
-        run_ingest(force_full=force_full, trigger="page", lock=lock)
+        # Pull the notes repositories first, so the run works on the latest notes
+        update.pull_and_ingest("page", lock, force_full=force_full)
     except Exception:
         pass  # recorded by runs.tracked_run: status page and history show it
 
@@ -85,12 +86,13 @@ def list_sources():
 
     items = [
         {
-            "source": src,
+            # Repo files are keyed "COURSE:path" in the manifest; show the path, the course has its column
+            "source": meta.get("source", key),
             "chunks": len(meta.get("chunk_ids", [])),
             "hash": meta.get("hash", "")[:16] + "…",
             "course": meta.get("course"),
         }
-        for src, meta in sorted(sources.items())
+        for key, meta in sorted(sources.items())
     ]
 
     if course_filter:
@@ -154,10 +156,13 @@ def create_course():
 @app.delete("/admin/courses/<path:name>")
 def delete_course(name):
     _bump_activity()
+    if name in repos.repo_courses():
+        return jsonify({"error": f"{name} has a notes repository: remove the repository first"}), 400
     safe = secure_filename(name)
     target = COURSES_DIR / safe
     if not safe or not target.is_dir():
-        return jsonify({"error": "not found"}), 404
+        return jsonify({"error": f"{name} has no upload folder; its indexed files disappear "
+                                 "when their source is removed and an ingest runs"}), 404
     # Only delete if empty
     files = list(target.rglob("*"))
     if any(p.is_file() for p in files):
@@ -167,6 +172,66 @@ def delete_course(name):
         return jsonify({"deleted": safe})
     except OSError:
         return jsonify({"error": "could not delete"}), 500
+
+
+# --- Notes repositories ---
+
+def _repos_json():
+    pending, failed_at = repos.pending_ingest()
+    return {"repos": [r.to_json() for r in repos.list_repos()], "pending_ingest": pending, "failed_at": failed_at}
+
+
+def _locked(action):
+    """Run a repo change with the ingest lock: never while an ingest reads the clones."""
+    try:
+        lock = runs.acquire_lock()
+    except runs.RunBusy:
+        return jsonify({"error": "an ingest is running; try again when it has finished"}), 409
+    try:
+        action()
+        return jsonify(_repos_json())
+    except repos.RepoError as e:
+        return jsonify({"error": str(e)}), 400
+    finally:
+        runs.release_lock(lock)
+
+
+@app.get("/admin/repos")
+def get_repos():
+    _bump_activity()
+    return jsonify(_repos_json())
+
+
+@app.post("/admin/repos")
+def add_repo():
+    _bump_activity()
+    data = request.get_json(silent=True) or {}
+
+    def action():
+        repo = repos.add_repo(data.get("url", ""), data.get("course", ""), data.get("site_url"), data.get("exclude"))
+        runs.log_event("repo_added", course=repo.course, url=repo.url)
+    return _locked(action)
+
+
+@app.patch("/admin/repos/<course>")
+def edit_repo(course):
+    _bump_activity()
+    data = request.get_json(silent=True) or {}
+
+    def action():
+        repo = repos.update_repo(course, data.get("url"), data.get("site_url"), data.get("exclude"))
+        runs.log_event("repo_changed", course=repo.course, url=repo.url)
+    return _locked(action)
+
+
+@app.delete("/admin/repos/<course>")
+def remove_repo(course):
+    _bump_activity()
+
+    def action():
+        repos.remove_repo(course)
+        runs.log_event("repo_removed", course=course)
+    return _locked(action)
 
 
 # --- Uploaded files (course-scoped) ---
@@ -354,10 +419,66 @@ _PAGE = """<!doctype html>
   #course-list li { display: flex; align-items: center; justify-content: space-between;
                     padding: 0.4rem 0.6rem; border-bottom: 1px solid #eee; }
   #course-select { font-size: 1rem; padding: 0.35rem 0.5rem; }
+  .tag { font-size: 0.75rem; color: #555; background: #eef1f6; border-radius: 999px; padding: 0.1rem 0.5rem; margin-left: 0.5rem; }
+  /* Notes repositories */
+  table.data.plain th { cursor: default; }
+  table.data.plain th:hover { background: #f7f7f8; color: inherit; }
+  table.repos td { vertical-align: top; }
+  table.repos .actions { white-space: nowrap; text-align: right; width: 1%; }
+  table.repos .actions button { font-size: 0.8rem; padding: 0.15rem 0.55rem; }
+  .commit { font-size: 0.85rem; }
+  .commit .sha { font-family: ui-monospace, Consolas, monospace; color: #555; }
+  .meta { font-size: 0.78rem; color: #888; margin-top: 0.15rem; }
+  .err { font-size: 0.8rem; color: #c0392b; margin-top: 0.15rem; word-break: break-word; }
+  .notice { background: #fff8e1; border: 1px solid #f0d58a; border-radius: 6px; padding: 0.5rem 0.7rem;
+            font-size: 0.88rem; margin-top: 0.6rem; }
+  .repo-form { display: grid; grid-template-columns: 9rem 1fr; gap: 0.45rem 0.7rem; align-items: center;
+               margin-top: 0.75rem; padding: 0.8rem; border: 1px solid #ddd; border-radius: 8px; }
+  .repo-form label { font-size: 0.9rem; color: #444; }
+  .repo-form input { font-size: 0.95rem; padding: 0.35rem 0.5rem; width: 100%; box-sizing: border-box; }
+  .repo-form .help { grid-column: 2; font-size: 0.78rem; color: #777; margin-top: -0.25rem; }
+  .repo-form .buttons { grid-column: 2; display: flex; gap: 0.5rem; align-items: center; }
+  .repo-form .buttons button { font-size: 0.9rem; }
+  #repo-msg { font-size: 0.88rem; }
+  @media (max-width: 560px) { .repo-form { grid-template-columns: 1fr; } .repo-form .help, .repo-form .buttons { grid-column: 1; } }
 </style>
 </head>
 <body>
   <h1>Ingest</h1>
+
+  <h2>Notes repositories</h2>
+  <p>Public GitHub repositories with course notes in the Quarto course layout (<code>index.qmd</code>,
+  <code>pages/*.qmd</code>, <code>_includes/**/*.md</code>, and any PDFs). Each one is a course: you can
+  upload more sources into it below. They are checked for new commits every 10 minutes, and changes are
+  ingested automatically.</p>
+  <div id="repo-pending" class="notice" hidden>Repository changes are not ingested yet. The next check
+    (within 10 minutes) ingests them, or click <b>Start ingest</b>.</div>
+  <div class="panel">
+    <div class="scroll">
+      <table id="repos-table" class="data plain repos">
+        <thead><tr><th>Course</th><th>Repository</th><th>Latest commit</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="repos-empty" class="empty" hidden>No repositories yet.</div>
+    </div>
+  </div>
+  <div class="repo-form" id="repo-form">
+    <label for="repo-url">GitHub link</label>
+    <input type="url" id="repo-url" placeholder="https://github.com/owner/repo">
+    <label for="repo-course">Course</label>
+    <input type="text" id="repo-course" placeholder="e.g. TMA4411">
+    <label for="repo-site">Published site</label>
+    <input type="url" id="repo-site" placeholder="filled in from the link (GitHub Pages)">
+    <div class="help">Where the notes are published, so answers can link to the right page. Leave empty for GitHub Pages.</div>
+    <label for="repo-exclude">Files to skip</label>
+    <input type="text" id="repo-exclude" placeholder="e.g. *fasit*.pdf, assets/old/*">
+    <div class="help">Comma-separated patterns, matched against the path in the repo or the file name.</div>
+    <div class="buttons">
+      <button id="repo-submit" onclick="submitRepo()">Add repository</button>
+      <button id="repo-cancel" onclick="resetRepoForm()" hidden>Cancel</button>
+      <span id="repo-msg"></span>
+    </div>
+  </div>
 
   <h2>Courses</h2>
   <p>Create a course folder. Uploaded files go into the selected course.</p>
@@ -426,15 +547,24 @@ const courseSelect = document.getElementById('course-select');
 const courseListEl = document.getElementById('course-list');
 const newCourseEl = document.getElementById('new-course');
 
+// API paths are relative: the page lives at .../ingest/, so they go through the same route (and login)
 async function loadCourses() {
-  const res = await fetch('/admin/courses');
+  const res = await fetch('admin/courses');
   const names = await res.json();
+  const selected = courseSelect.value;
   courseListEl.innerHTML = '';
   courseSelect.innerHTML = '<option value="">-- select course --</option>';
   for (const name of names) {
     const li = document.createElement('li');
     const label = document.createElement('span');
     label.textContent = name;
+    const repo = reposData.find(r => r.course === name);
+    if (repo) {
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.textContent = 'from repo ' + repoName(repo.url);
+      label.appendChild(tag);
+    }
     const delBtn = document.createElement('button');
     delBtn.textContent = 'Delete';
     delBtn.onclick = () => deleteCourse(name);
@@ -447,12 +577,174 @@ async function loadCourses() {
     opt.textContent = name;
     courseSelect.appendChild(opt);
   }
+  if (names.includes(selected)) courseSelect.value = selected;
+}
+
+/* --- Notes repositories --- */
+let reposData = [];
+let editingCourse = null;
+
+function repoName(url) {
+  return url.replace('https://github.com/', '');
+}
+
+function ago(ts) {
+  if (!ts) return '';
+  const s = Math.round((Date.now() - new Date(ts)) / 1000);
+  if (s < 90) return 'just now';
+  if (s < 5400) return Math.round(s / 60) + ' min ago';
+  if (s < 129600) return Math.round(s / 3600) + ' h ago';
+  return Math.round(s / 86400) + ' days ago';
+}
+
+async function loadRepos() {
+  try {
+    const res = await fetch('admin/repos');
+    const data = await res.json();
+    reposData = data.repos || [];
+    document.getElementById('repo-pending').hidden = !data.pending_ingest;
+  } catch (e) {
+    reposData = [];
+  }
+  renderRepos();
+}
+
+function renderRepos() {
+  const tbody = document.querySelector('#repos-table tbody');
+  tbody.innerHTML = '';
+  document.getElementById('repos-empty').hidden = reposData.length > 0;
+  for (const r of reposData) {
+    const tr = document.createElement('tr');
+    const tdCourse = document.createElement('td');
+    tdCourse.textContent = r.course;
+
+    const tdRepo = document.createElement('td');
+    const a = document.createElement('a');
+    a.href = r.url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = repoName(r.url);
+    tdRepo.appendChild(a);
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = (r.site_url ? 'site: ' + r.site_url.replace(/^https?:[/][/]/, '') : 'no published site')
+      + (r.exclude && r.exclude.length ? ' · skips: ' + r.exclude.join(', ') : '');
+    tdRepo.appendChild(meta);
+
+    const tdCommit = document.createElement('td');
+    tdCommit.className = 'commit';
+    const lc = r.last_check || {};
+    if (lc.commit) {
+      const sha = document.createElement('span');
+      sha.className = 'sha';
+      sha.textContent = lc.commit + ' ';
+      tdCommit.append(sha, document.createTextNode(lc.subject || ''));
+    }
+    const when = document.createElement('div');
+    when.className = 'meta';
+    when.textContent = (lc.date ? 'committed ' + ago(lc.date) : '') + (lc.at ? (lc.date ? ' · ' : '') + 'checked ' + ago(lc.at) : '');
+    tdCommit.appendChild(when);
+    if (lc.error) {
+      const err = document.createElement('div');
+      err.className = 'err';
+      err.textContent = lc.error;
+      tdCommit.appendChild(err);
+    }
+
+    const tdActions = document.createElement('td');
+    tdActions.className = 'actions';
+    const edit = document.createElement('button');
+    edit.textContent = 'Edit';
+    edit.onclick = () => editRepo(r.course);
+    const del = document.createElement('button');
+    del.textContent = 'Remove';
+    del.onclick = () => removeRepo(r.course);
+    tdActions.append(edit, ' ', del);
+
+    tr.append(tdCourse, tdRepo, tdCommit, tdActions);
+    tbody.appendChild(tr);
+  }
+}
+
+function resetRepoForm() {
+  editingCourse = null;
+  for (const id of ['repo-url', 'repo-course', 'repo-site', 'repo-exclude']) document.getElementById(id).value = '';
+  document.getElementById('repo-course').disabled = false;
+  document.getElementById('repo-submit').textContent = 'Add repository';
+  document.getElementById('repo-cancel').hidden = true;
+  document.getElementById('repo-msg').textContent = '';
+}
+
+function editRepo(course) {
+  const r = reposData.find(x => x.course === course);
+  if (!r) return;
+  editingCourse = course;
+  document.getElementById('repo-url').value = r.url;
+  document.getElementById('repo-course').value = r.course;
+  document.getElementById('repo-course').disabled = true;  // a different course is a different repo entry
+  document.getElementById('repo-site').value = r.site_url || '';
+  document.getElementById('repo-exclude').value = (r.exclude || []).join(', ');
+  document.getElementById('repo-submit').textContent = 'Save changes';
+  document.getElementById('repo-cancel').hidden = false;
+  document.getElementById('repo-msg').textContent = 'Editing ' + course + '. A new link keeps the same clone; files that are the same there are not re-embedded.';
+  document.getElementById('repo-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function submitRepo() {
+  const msg = document.getElementById('repo-msg');
+  const submit = document.getElementById('repo-submit');
+  const body = {
+    url: document.getElementById('repo-url').value.trim(),
+    site_url: document.getElementById('repo-site').value.trim(),
+    exclude: document.getElementById('repo-exclude').value,
+  };
+  if (!editingCourse) body.course = document.getElementById('repo-course').value.trim();
+  if (!body.url || (!editingCourse && !body.course)) {
+    msg.textContent = 'A GitHub link and a course name are needed.';
+    return;
+  }
+  submit.disabled = true;
+  msg.textContent = editingCourse ? 'Saving...' : 'Cloning the repository...';
+  const res = await fetch(editingCourse ? 'admin/repos/' + encodeURIComponent(editingCourse) : 'admin/repos', {
+    method: editingCourse ? 'PATCH' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  submit.disabled = false;
+  if (!res.ok) {
+    msg.textContent = 'Error: ' + (data.error || res.statusText);
+    return;
+  }
+  const done = editingCourse ? 'Saved.' : 'Added ' + body.course + '.';
+  resetRepoForm();
+  msg.textContent = done;
+  reposData = data.repos || [];
+  document.getElementById('repo-pending').hidden = !data.pending_ingest;
+  renderRepos();
+  loadCourses();
+}
+
+async function removeRepo(course) {
+  if (!confirm('Remove the repository for ' + course + '? Its notes leave the index at the next ingest. '
+      + 'Files you uploaded to ' + course + ' stay.')) return;
+  const res = await fetch('admin/repos/' + encodeURIComponent(course), { method: 'DELETE' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    alert(data.error || 'Failed');
+    return;
+  }
+  if (editingCourse === course) resetRepoForm();
+  reposData = data.repos || [];
+  document.getElementById('repo-pending').hidden = !data.pending_ingest;
+  renderRepos();
+  loadCourses();
 }
 
 async function createCourse() {
   const name = newCourseEl.value.trim();
   if (!name) return;
-  const res = await fetch('/admin/courses', {
+  const res = await fetch('admin/courses', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
@@ -468,7 +760,7 @@ async function createCourse() {
 
 async function deleteCourse(name) {
   if (!confirm('Delete course ' + name + '? Only works if empty.')) return;
-  const res = await fetch('/admin/courses/' + encodeURIComponent(name), { method: 'DELETE' });
+  const res = await fetch('admin/courses/' + encodeURIComponent(name), { method: 'DELETE' });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     alert(body.error || 'Failed');
@@ -480,7 +772,7 @@ async function deleteCourse(name) {
 async function loadFiles() {
   const course = courseSelect.value;
   const qs = course ? '?course=' + encodeURIComponent(course) : '';
-  const res = await fetch('/files' + qs);
+  const res = await fetch('files' + qs);
   filesData = await res.json();
   renderFiles();
 }
@@ -543,7 +835,7 @@ function renderFiles() {
 
 async function setCopyright(name, checkbox) {
   checkbox.disabled = true;
-  const res = await fetch('/files/copyright', {
+  const res = await fetch('files/copyright', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ course: courseSelect.value, name, copyrighted: checkbox.checked }),
@@ -573,7 +865,7 @@ async function uploadFile() {
   }
   formData.append('course', course);
   formData.append('copyrighted', document.getElementById('upload-copyrighted').checked ? 'true' : 'false');
-  const res = await fetch('/files', { method: 'POST', body: formData });
+  const res = await fetch('files', { method: 'POST', body: formData });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     uploadMsgEl.textContent = 'Error: ' + (body.error || res.statusText);
@@ -595,7 +887,7 @@ async function uploadFile() {
 async function deleteFile(name) {
   const course = courseSelect.value;
   const qs = course ? '?course=' + encodeURIComponent(course) : '';
-  await fetch('/files/' + encodeURIComponent(name) + qs, { method: 'DELETE' });
+  await fetch('files/' + encodeURIComponent(name) + qs, { method: 'DELETE' });
   loadFiles();
 }
 
@@ -605,6 +897,7 @@ courseSelect.addEventListener('change', () => {
 });
 
 async function init() {
+  await loadRepos();  // first: the course list marks the courses that come from a repo
   await loadCourses();
   loadFiles();
   loadSources();
@@ -616,7 +909,7 @@ async function loadSources() {
   const qs = course ? '?course=' + encodeURIComponent(course) : '';
   const summary = document.getElementById('sources-summary');
   try {
-    const res = await fetch('/sources' + qs);
+    const res = await fetch('sources' + qs);
     const data = await res.json();
     if (!data.indexed) {
       summary.textContent = '';
@@ -687,7 +980,7 @@ function renderSources(emptyMsg) {
 }
 
 async function runIngest() {
-  const res = await fetch('/run', {
+  const res = await fetch('run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ force_full: forceFullEl.checked }),
@@ -697,8 +990,17 @@ async function runIngest() {
     alert(body.error || 'Failed to start ingest');
     return;
   }
+  // The run starts after the repositories are pulled: keep polling until it shows up
+  awaitingRun = { before: lastStartedAt, until: Date.now() + 120000 };
+  statusEl.textContent = 'pulling the notes repositories...';
+  statusEl.className = 'running';
+  btn.disabled = true;
   poll();
 }
+
+let lastStartedAt = null;
+let lastStatus = null;
+let awaitingRun = null;
 
 function render(state) {
   statusEl.textContent = state.status
@@ -711,10 +1013,21 @@ function render(state) {
 }
 
 async function poll() {
-  const res = await fetch('/status');
+  const res = await fetch('status');
   const state = await res.json();
-  render(state);
-  if (state.status === 'running') {
+  const waiting = awaitingRun && state.started_at === awaitingRun.before && Date.now() < awaitingRun.until;
+  if (!waiting) {
+    awaitingRun = null;
+    render(state);
+  }
+  // A run just ended: the index and the repositories' state changed
+  if (lastStatus === 'running' && state.status !== 'running') {
+    loadRepos();
+    loadSources();
+  }
+  lastStatus = state.status;
+  lastStartedAt = state.started_at;
+  if (state.status === 'running' || waiting) {
     setTimeout(poll, 1500);
   }
 }

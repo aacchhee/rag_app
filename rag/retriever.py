@@ -4,6 +4,7 @@ Keeps the same Hit dataclass and search() API.
 """
 
 import logging
+import warnings
 from dataclasses import dataclass
 from typing import List
 
@@ -13,6 +14,9 @@ from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from config import Config
 from log_utils import current_request_id
+
+# Qdrant runs on the same machine (localhost), so an API key over plain http is fine
+warnings.filterwarnings("ignore", message="Api key is used with an insecure connection")
 
 logger = logging.getLogger("gunicorn.error")
 

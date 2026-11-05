@@ -3,10 +3,12 @@ Ingest pipeline: collect markdown files → chunk → embed → store in Qdrant.
 """
 
 from pathlib import Path
+from typing import NamedTuple
 import hashlib
 import json
 import os
 import uuid
+import warnings
 
 from langchain_core.documents import Document
 from langchain_qdrant import QdrantVectorStore
@@ -16,22 +18,15 @@ from qdrant_client.models import Distance, FieldCondition, Filter, MatchValue, P
 from ingest.chunker import CHUNKER_VERSION, chunk_markdown
 from ingest.embed import get_embeddings_model
 from ingest.pdf import convert_pdf_to_markdown
+from ingest import repos
 from ingest.runs import DATA_DIR, acquire_lock, is_running, tracked_run
 from config import Config
 
+# Qdrant runs on the same machine (localhost), so an API key over plain http is fine
+warnings.filterwarnings("ignore", message="Api key is used with an insecure connection")
 
-# repo path -> course name
-REPOS: list[tuple[Path, str]] = [
-    (Path("/home/rag/notes_repo"), "IMAx2024"),
-    (Path("/home/rag/ingmat3a_ntnu"), "IMAx3011"),
-]
-
-# course -> published Quarto site of its repo, for linking answers back to the notes
-# (rag/source_links.py). A course without an entry gets no links.
-SITE_URLS: dict[str, str] = {
-    "IMAx2024": "https://aacchhee.github.io/ingmat2_ntnu/",
-    "IMAx3011": "https://aacchhee.github.io/ingmat3a_ntnu/",
-}
+# The notes repositories are not listed here: they are managed on the ingest page
+# and stored in /app/data/repos.json (ingest/repos.py).
 
 # Course-scoped upload directory for PDFs uploaded via the ingest web UI.
 # Each subdirectory is a course name, e.g. /app/data/courses/ma1101/week1.pdf
@@ -71,72 +66,63 @@ def set_copyrighted_in_qdrant(source: str, copyrighted: bool) -> None:
     )
 
 
-def _course_for(f: Path) -> str | None:
-    """Return course name inferred from file location, or None."""
-    try:
-        rel = f.relative_to(COURSES_DIR)
-        parts = rel.parts
-        return parts[0] if len(parts) > 1 else None
-    except ValueError:
-        pass
-    for repo_dir, course_name in REPOS:
-        try:
-            rel = f.relative_to(repo_dir)
-            return course_name
-        except ValueError:
-            continue
-    return None
-
-
 def _rel_source(f: Path) -> str:
-    for repo_dir, _ in REPOS:
-        try:
-            return str(f.relative_to(repo_dir))
-        except ValueError:
-            continue
+    """An uploaded file's source name: its path in the uploads folder, e.g. IMAx3011/book.md."""
     try:
-        return str(f.relative_to(COURSES_DIR))
+        return f.relative_to(COURSES_DIR).as_posix()
     except ValueError:
-        pass
-    return f.name
+        return f.name
 
 
-def collect_files() -> list[Path]:
-    files: list[Path] = []
+class SourceFile(NamedTuple):
+    path: Path
+    key: str  # identity in the manifest and Qdrant point ids: unique across courses
+    source: str  # metadata.source: what answers, links and the reader show and look up
+    course: str | None
 
-    for repo_dir, _ in REPOS:
-        if not repo_dir.exists():
+
+def collect_files() -> list[SourceFile]:
+    files: list[SourceFile] = []
+
+    for repo in repos.list_repos():
+        root = repo.path
+        if not root.exists():
+            print(f"[ingest] warning: {repo.course}: clone {root} is missing; its files are skipped")
             continue
+        found: list[Path] = []
         # 1) root index.qmd
-        idx = repo_dir / "index.qmd"
-        if idx.exists():
-            files.append(idx)
-
+        if (root / "index.qmd").exists():
+            found.append(root / "index.qmd")
         # 2) wrappers in /pages
-        pages_dir = repo_dir / "pages"
-        if pages_dir.exists():
-            files.extend(sorted(pages_dir.glob("*.qmd")))
-
+        if (root / "pages").exists():
+            found.extend(sorted((root / "pages").glob("*.qmd")))
         # 3) actual content in /_includes/**/*.md (recursive)
-        inc = repo_dir / "_includes"
-        if inc.exists():
-            files.extend(sorted(inc.rglob("*.md")))
-
+        if (root / "_includes").exists():
+            found.extend(sorted((root / "_includes").rglob("*.md")))
         # 4) PDFs anywhere in the repo
-        files.extend(sorted(repo_dir.rglob("*.pdf")))
+        found.extend(sorted(p for p in root.rglob("*.pdf") if ".git" not in p.relative_to(root).parts))
+
+        for p in found:
+            rel = p.relative_to(root).as_posix()
+            if repo.excluded(rel):
+                continue
+            # Two repos may both have pages/uke10.qmd: the course keeps them apart
+            files.append(SourceFile(p, f"{repo.course}:{rel}", rel, repo.course))
 
     # 5) Uploaded files via the ingest web UI (course-scoped): PDF, Markdown, QMD
     if COURSES_DIR.exists():
-        files.extend(sorted(COURSES_DIR.rglob("*.pdf")))
-        files.extend(sorted(COURSES_DIR.rglob("*.md")))
-        files.extend(sorted(COURSES_DIR.rglob("*.qmd")))
+        for pattern in ("*.pdf", "*.md", "*.qmd"):
+            for p in sorted(COURSES_DIR.rglob(pattern)):
+                rel = _rel_source(p)
+                parts = rel.split("/")
+                files.append(SourceFile(p, rel, rel, parts[0] if len(parts) > 1 else None))
 
     return files
 
 
 def list_courses() -> list[str]:
-    """Return sorted list of courses from both uploaded PDF folders and the ingest manifest."""
-    courses: set[str] = set()
+    """Courses from the notes repositories, the upload folders and the ingest manifest."""
+    courses: set[str] = set(repos.repo_courses())
     if COURSES_DIR.exists():
         courses.update(p.name for p in COURSES_DIR.iterdir() if p.is_dir())
     manifest = _load_manifest()
@@ -170,11 +156,11 @@ def _save_manifest(manifest: dict) -> None:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
 
 
-def _chunk_id(source: str, index: int) -> str:
-    # Stable per source path + position, independent of what else changes in
+def _chunk_id(key: str, index: int) -> str:
+    # Stable per source key + position, independent of what else changes in
     # the same ingest run, so unrelated files' chunks keep the same Qdrant
     # point IDs across runs.
-    return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{source}::{index}"))
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{key}::{index}"))
 
 
 def main(force_full: bool = False, trigger: str = "cli", lock=None):
@@ -192,7 +178,8 @@ def _ingest(force_full: bool) -> None:
     files = collect_files()
     if not files:
         raise RuntimeError(
-            f"No files found under {REPO_DIR}. Check repo layout / paths."
+            "No files found: no notes repository has files to ingest and nothing is uploaded. "
+            "Check the repositories on the ingest page."
         )
 
     embeddings = get_embeddings_model()
@@ -248,21 +235,21 @@ def _ingest(force_full: bool) -> None:
     skipped = 0
     changed = 0
 
-    for f in files:
-        rel = _rel_source(f)
-        seen_sources.add(rel)
+    for sf in files:
+        f, key, rel, course = sf
+        seen_sources.add(key)
         raw_bytes = f.read_bytes()
         # The chunker version is part of the hash, so a chunker change re-chunks every file
         content_hash = hashlib.sha256(raw_bytes + f"\0chunker-v{CHUNKER_VERSION}".encode()).hexdigest()
 
-        prior = sources.get(rel)
+        prior = sources.get(key)
         if prior and prior.get("hash") == content_hash:
             skipped += 1
             continue
 
         changed += 1
         if f.suffix.lower() == ".pdf":
-            print(f"[ingest] converting PDF via marker: {rel}")
+            print(f"[ingest] converting PDF via marker: {key}")
             text = convert_pdf_to_markdown(f)
         else:
             try:
@@ -276,11 +263,10 @@ def _ingest(force_full: bool) -> None:
         if prior:
             to_delete_ids.extend(prior.get("chunk_ids", []))
 
-        new_ids = [_chunk_id(rel, i) for i in range(len(chunks))]
-        course = _course_for(f)
+        new_ids = [_chunk_id(key, i) for i in range(len(chunks))]
         for i, c in enumerate(chunks):
             meta: dict = {
-                "source": c.get("source", rel),
+                "source": rel,
                 "heading": c.get("title", ""),
                 "chunk_index": i,
             }
@@ -296,16 +282,17 @@ def _ingest(force_full: bool) -> None:
             )
             to_upsert_ids.append(new_ids[i])
 
-        entry: dict = {"hash": content_hash, "chunk_ids": new_ids}
+        entry: dict = {"hash": content_hash, "chunk_ids": new_ids, "source": rel}
         if course:
             entry["course"] = course
-        sources[rel] = entry
+        sources[key] = entry
 
-    # Sources that used to exist but were removed (deleted file / PDF removed via UI)
+    # Sources that used to exist but were removed (deleted file, file removed via the UI,
+    # repo removed or now skipped, or an entry from before keys included the course)
     removed_sources = set(sources.keys()) - seen_sources
-    for rel in removed_sources:
-        to_delete_ids.extend(sources[rel].get("chunk_ids", []))
-        del sources[rel]
+    for key in removed_sources:
+        to_delete_ids.extend(sources[key].get("chunk_ids", []))
+        del sources[key]
 
     total_chunks = sum(len(s["chunk_ids"]) for s in sources.values())
     if total_chunks == 0:
